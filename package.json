@@ -14,8 +14,7 @@
     "react-dom": "^18.2.0",
     "next-auth": "^4.22.1",
     "bcryptjs": "^2.4.3",
-    ""@prisma/client": "^5.0.0"
-    "@prisma/client": "^4.19.0",
+  "@prisma/client": "^5.20.0",
     "jszip": "^3.10.1",
    "@google/generative-ai": "^0.21.0"
   },
