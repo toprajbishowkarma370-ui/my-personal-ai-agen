@@ -1,0 +1,181 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  AGENT
+  CLIENT
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String?
+  email        String    @unique
+  emailVerified DateTime?
+  image        String?
+  passwordHash String?
+  role         Role      @default(ADMIN)
+  accounts     Account[]
+  sessions     Session[]
+  leads        Lead[]
+  tasks        Task[]
+  auditLogs    AuditLog[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  location  String   @default("Chaurjahari, Karnali")
+  leads     Lead[]
+  projects  Project[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Lead {
+  id          String      @id @default(cuid())
+  company     String
+  category    String      @default("General")
+  tier        Int         @default(1)
+  score       Int         @default(90)
+  status      String      @default("WAITING_APPROVAL")
+  notes       String?
+  draftNp     String?     @db.Text
+  draftEn     String?     @db.Text
+  customerId  String?
+  customer    Customer?   @relation(fields: [customerId], references: [id])
+  userId      String?
+  user        User?       @relation(fields: [userId], references: [id])
+  tasks       Task[]
+  approvals   Approval[]
+  outreaches  Outreach[]
+  projects    Project[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Approval {
+  id         String   @id @default(cuid())
+  actionType String   @default("OUTREACH_EMAIL")
+  title      String
+  payload    String   @db.Text
+  status     String   @default("PENDING")
+  approvedBy String?
+  approvedAt DateTime?
+  leadId     String?
+  lead       Lead?    @relation(fields: [leadId], references: [id])
+  createdAt  DateTime @default(now())
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("PLANNED")
+  priority    String   @default("MEDIUM")
+  leadId      String?
+  lead        Lead?    @relation(fields: [leadId], references: [id])
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Project {
+  id         String   @id @default(cuid())
+  name       String
+  framework  String   @default("Next.js 14")
+  deployUrl  String?
+  status     String   @default("SCAFFOLDED")
+  leadId     String?
+  lead       Lead?    @relation(fields: [leadId], references: [id])
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Outreach {
+  id          String   @id @default(cuid())
+  channel     String   @default("EMAIL")
+  recipient   String
+  subjectNp   String?
+  subjectEn   String?
+  contentNp   String?  @db.Text
+  contentEn   String?  @db.Text
+  status      String   @default("STAGED")
+  leadId      String?
+  lead        Lead?    @relation(fields: [leadId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model Proposal {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   @db.Text
+  value     Float?
+  status    String   @default("DRAFT")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String
+  details    String?
+  actorEmail String   @default("alex.morgan@agency.local")
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  createdAt  DateTime @default(now())
+}
+
+model IntegrationStatus {
+  id           String   @id @default(cuid())
+  provider     String   @unique
+  connected    Boolean  @default(false)
+  lastChecked  DateTime @default(now())
+}
