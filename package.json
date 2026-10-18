@@ -1,27 +1,19 @@
-{
-  "name": "my-personal-ai-agen",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "type-check": "tsc --noEmit"
-  },
-  "dependencies": {
-    "next": "^14.2.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "next-auth": "^4.22.1",
-    "bcryptjs": "^2.4.3",
+
+"dependencies": {
+  "next": "^14.2.0",
+  "react": "^18.2.0",
+  "react-dom": "^18.2.0",
+  "next-auth": "^4.22.1",
+  "bcryptjs": "^2.4.3",
   "@prisma/client": "^5.20.0",
-    "jszip": "^3.10.1",
-   "@google/generative-ai": "^0.21.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.1.6",
-    "@types/node": "^20.3.1",
-    "@types/react": "^18.2.21",
-    "@types/react-dom": "^18.2.7"
-  }
+  "jszip": "^3.10.1",
+  "@google/generative-ai": "^0.21.0"
+},
+"devDependencies": {
+  "prisma": "^5.20.0",
+  "typescript": "^5.1.6",
+  "@types/node": "^20.3.1",
+  "@types/react": "^18.2.21",
+  "@types/react-dom": "^18.2.7"
 }
+
