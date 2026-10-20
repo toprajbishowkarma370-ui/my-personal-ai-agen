@@ -1,3 +1,4 @@
+
 name: Personal AI Agent CI
 
 on:
@@ -17,12 +18,7 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+        run: npm install
 
       - name: Generate Prisma Client
         run: npx prisma generate
@@ -32,4 +28,3 @@ jobs:
 
       - name: Production Build
         run: npm run build
-        
