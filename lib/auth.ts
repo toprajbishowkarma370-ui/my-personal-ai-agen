@@ -1,3 +1,4 @@
+
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
@@ -9,16 +10,21 @@ export async function getAuthSession() {
 
 export async function requireAdminSession() {
   const session = await getAuthSession();
+
   if (!session || (session.user as any)?.role !== "ADMIN") {
     throw new Error("UNAUTHORIZED: Owner ADMIN role required");
   }
+
   return session;
 }
 
 export async function requireAgentSession() {
   const session = await getAuthSession();
-  if (!session || !["ADMIN", "AGENT"].includes((session.user as any)?.role)) {
+  const role = (session?.user as any)?.role;
+
+  if (!session || !["ADMIN", "AGENT"].includes(role)) {
     throw new Error("UNAUTHORIZED: AGENT or ADMIN role required");
   }
+
   return session;
 }
