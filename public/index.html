@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>My Personal AI Business Agent - QR Payments</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background: #f9f9f9; color: #333; }
+    h1, h2 { color: #2c3e50; }
+    .card { background: #fff; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+    button { background: #3498db; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #2980b9; }
+    .qr-preview { max-width: 200px; display: block; margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <h1>My Personal AI Business Agent - QR Payments</h1>
+  
+  <div class="card">
+    <h2>Owner: Configure Payment QR</h2>
+    <input type="password" id="ownerToken" placeholder="Owner Token / Password">
+    <input type="text" id="qrUrl" placeholder="QR Image URL (e.g. https://.../qr.png)">
+    <button onclick="saveQR()">Save QR Configuration</button>
+    <p id="qrStatus"></p>
+  </div>
+
+  <div class="card">
+    <h2>Customer: View Invoice & Pay</h2>
+    <input type="text" id="invoiceIdInput" placeholder="Enter Invoice ID (e.g. inv_...)">
+    <button onclick="loadInvoice()">Load Invoice</button>
+    <div id="invoiceDetails" style="margin-top: 15px;"></div>
+  </div>
+
+  <script>
+    async function saveQR() {
+      const token = document.getElementById('ownerToken').value;
+      const qrImageUrl = document.getElementById('qrUrl').value;
+      const res = await fetch('/api/owner/qr', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ qrImageUrl })
+      });
+      const data = await res.json();
+      document.getElementById('qrStatus').innerText = data.success ? 'QR updated successfully!' : 'Error: ' + data.error;
+    }
+
+    async function loadInvoice() {
+      const id = document.getElementById('invoiceIdInput').value;
+      const res = await fetch('/api/invoices/' + id);
+      const data = await res.json();
+      const container = document.getElementById('invoiceDetails');
+      if (!data.success) {
+        container.innerHTML = '<p style="color:red;">Invoice not found</p>';
+        return;
+      }
+      container.innerHTML = `
+        <p><strong>Customer:</strong> ${data.invoice.customerName}</p>
+        <p><strong>Amount:</strong> $${data.invoice.amount}</p>
+        <p><strong>Status:</strong> ${data.invoice.status}</p>
+        <p><strong>Instructions:</strong> ${data.paymentInstructions.instructions}</p>
+        ${data.paymentInstructions.qrImageUrl ? `<img src="${data.paymentInstructions.qrImageUrl}" class="qr-preview" alt="Payment QR">` : ''}
+        <h3>Submit Payment</h3>
+        <input type="text" id="txnRef" placeholder="Transaction Reference / ID">
+        <button onclick="submitPayment('${data.invoice.id}')">Submit for Verification</button>
+        <p id="payStatus"></p>
+      `;
+    }
+
+    async function submitPayment(id) {
+      const transactionRef = document.getElementById('txnRef').value;
+      const formData = new FormData();
+      formData.append('transactionRef', transactionRef);
+      const res = await fetch('/api/invoices/' + id + '/pay', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      document.getElementById('payStatus').innerText = data.success ? data.message : 'Error: ' + data.error;
+    }
+  </script>
+</body>
+</html>
