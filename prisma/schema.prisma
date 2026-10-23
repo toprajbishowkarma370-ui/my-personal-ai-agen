@@ -72,6 +72,7 @@ model Customer {
   location  String   @default("Chaurjahari, Karnali")
   leads     Lead[]
   projects  Project[]
+  invoices  Invoice[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -94,6 +95,7 @@ model Lead {
   approvals   Approval[]
   outreaches  Outreach[]
   projects    Project[]
+  invoices    Invoice[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 }
@@ -178,4 +180,42 @@ model IntegrationStatus {
   provider     String   @unique
   connected    Boolean  @default(false)
   lastChecked  DateTime @default(now())
+}
+
+model Invoice {
+  id            String    @id @default(cuid())
+  invoiceNumber String    @unique
+  customerId    String
+  customer      Customer  @relation(fields: [customerId], references: [id])
+  leadId        String?
+  lead          Lead?     @relation(fields: [leadId], references: [id])
+  title         String
+  items         String    @db.Text
+  currency      String    @default("NPR")
+  subtotal      Float
+  tax           Float     @default(0)
+  total         Float
+  dueDate       DateTime
+  status        String    @default("DRAFT")
+  notes         String?   @db.Text
+  payments      Payment[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Payment {
+  id               String   @id @default(cuid())
+  invoiceId        String
+  invoice          Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount           Float
+  currency         String   @default("NPR")
+  method           String
+  status           String   @default("PENDING")
+  transactionId    String?  @unique
+  referenceNumber  String?
+  evidenceMetadata String?  @db.Text
+  verifiedBy       String?
+  verifiedAt       DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
