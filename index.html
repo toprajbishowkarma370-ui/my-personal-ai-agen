@@ -1487,11 +1487,14 @@ async function doLogin(demo = false) {
   const email = document.getElementById('authEmail').value;
   const pass = document.getElementById('authPass').value;
   const errBox = document.getElementById('authError');
-  errBox.classList.add('hidden');
+  errBox.textContent = "Diagnostic: Login handler started, connecting to NextAuth...";
+  errBox.className = "mb-3 p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/40 text-cyan-300 text-xs";
+  errBox.classList.remove('hidden');
   
   const isProd = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
   if (demo && isProd) {
     errBox.textContent = "One-Click Demo Session is disabled in production for security. Please sign in with your configured OWNER_EMAIL and password.";
+    errBox.className = "mb-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs";
     errBox.classList.remove('hidden');
     return;
   }
@@ -1506,6 +1509,7 @@ async function doLogin(demo = false) {
 
   if (!email || !pass) {
     errBox.textContent = "Please enter both email and password.";
+    errBox.className = "mb-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs";
     errBox.classList.remove('hidden');
     return;
   }
@@ -1601,6 +1605,8 @@ function doLogout() {
   localStorage.removeItem('owner_session_active');
   location.reload();
 }
+window.doLogin = doLogin;
+window.doLogout = doLogout;
 
 /* ============ NAV ============ */
 function toggleMobileNav() {

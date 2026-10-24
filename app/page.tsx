@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import ClientDashboard from '@/components/ClientDashboard';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,7 +44,5 @@ export default function Page() {
     `;
   }
 
-  return (
-    <div dangerouslySetInnerHTML={{ __html: bodyContent }} />
-  );
+  return <ClientDashboard htmlContent={bodyContent} />;
 }
