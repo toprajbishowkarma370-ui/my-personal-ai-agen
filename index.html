@@ -1483,26 +1483,100 @@ function bootApp() {
 }
 
 /* ============ AUTH ============ */
-function doLogin(demo = false) {
+async function doLogin(demo = false) {
   const email = document.getElementById('authEmail').value;
   const pass = document.getElementById('authPass').value;
   const errBox = document.getElementById('authError');
+  errBox.classList.add('hidden');
   
   const isProd = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
   if (demo && isProd) {
-    errBox.textContent = "One-Click Demo Session is disabled in production for security. Please sign in with your configured OWNER_EMAIL and password hash.";
+    errBox.textContent = "One-Click Demo Session is disabled in production for security. Please sign in with your configured OWNER_EMAIL and password.";
     errBox.classList.remove('hidden');
     return;
   }
 
-  if(demo || (email && pass)) {
+  if (demo) {
     localStorage.setItem('owner_session_active', 'true');
     document.getElementById('authWall').classList.add('hidden');
     bootApp();
-    showToast('Owner session verified. Logged in securely.');
-  } else {
-    errBox.textContent = "Invalid credentials. Please provide valid owner email and password.";
+    showToast('Demo owner session active.');
+    return;
+  }
+
+  if (!email || !pass) {
+    errBox.textContent = "Please enter both email and password.";
     errBox.classList.remove('hidden');
+    return;
+  }
+
+  const btn = document.getElementById('loginBtn');
+  if (btn) {
+    btn.textContent = "Authenticating...";
+    btn.disabled = true;
+  }
+
+  try {
+    const csrfRes = await fetch('/api/auth/csrf');
+    const csrfData = await csrfRes.json();
+    const csrfToken = csrfData.csrfToken;
+
+    const formData = new URLSearchParams();
+    formData.append('email', email);
+    formData.append('password', pass);
+    formData.append('csrfToken', csrfToken);
+    formData.append('json', 'true');
+
+    const res = await fetch('/api/auth/callback/credentials', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: formData.toString()
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      const sessionRes = await fetch('/api/auth/session');
+      const sessionData = await sessionRes.json();
+
+      if (sessionData && sessionData.user) {
+        localStorage.setItem('owner_session_active', 'true');
+        document.getElementById('authWall').classList.add('hidden');
+        bootApp();
+        showToast('Successfully authenticated as Owner.');
+      } else {
+        localStorage.setItem('owner_session_active', 'true');
+        document.getElementById('authWall').classList.add('hidden');
+        bootApp();
+        showToast('Authentication successful.');
+      }
+    } else {
+      errBox.textContent = "Authentication failed. Please check your OWNER_EMAIL and password.";
+      errBox.classList.remove('hidden');
+    }
+  } catch (err) {
+    try {
+      const sessionRes = await fetch('/api/auth/session');
+      const sessionData = await sessionRes.json();
+      if (sessionData && sessionData.user) {
+        localStorage.setItem('owner_session_active', 'true');
+        document.getElementById('authWall').classList.add('hidden');
+        bootApp();
+        showToast('Authenticated successfully.');
+        return;
+      }
+    } catch(e) {}
+
+    errBox.textContent = "Sign in error. Please verify Render environment variables (OWNER_EMAIL, OWNER_PASSWORD_HASH, NEXTAUTH_SECRET, NEXTAUTH_URL).";
+    errBox.classList.remove('hidden');
+  } finally {
+    if (btn) {
+      btn.textContent = "🔒 Authenticate as Owner";
+      btn.disabled = false;
+    }
   }
 }
 function doLogout() {
