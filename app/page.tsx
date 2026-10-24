@@ -4,18 +4,43 @@ import path from 'path';
 export const dynamic = 'force-dynamic';
 
 export default function Page() {
-  const filePath = path.join(process.cwd(), 'index.html');
+  const pathsToTry = [
+    path.join(process.cwd(), 'index.html'),
+    path.join(process.cwd(), 'public', 'index.html'),
+    path.join(__dirname, 'index.html'),
+    path.join(__dirname, '../index.html'),
+    path.join(__dirname, '../../index.html'),
+    path.join(__dirname, '../../../index.html'),
+  ];
+
   let bodyContent = '';
-  try {
-    const html = fs.readFileSync(filePath, 'utf8');
-    const match = html.match(/<body[^>]*>(.*)<\/body>/is);
-    if (match && match[1]) {
-      bodyContent = match[1];
-    } else {
-      bodyContent = html;
+  let htmlFound = false;
+
+  for (const filePath of pathsToTry) {
+    try {
+      if (fs.existsSync(filePath)) {
+        const html = fs.readFileSync(filePath, 'utf8');
+        const match = html.match(/<body[^>]*>(.*)<\/body>/is);
+        if (match && match[1]) {
+          bodyContent = match[1];
+        } else {
+          bodyContent = html;
+        }
+        htmlFound = true;
+        break;
+      }
+    } catch (e) {
+      // try next path
     }
-  } catch (e) {
-    bodyContent = '<div class="p-8 text-white">Dashboard loading error</div>';
+  }
+
+  if (!htmlFound) {
+    bodyContent = `
+      <div style="background:#070a14;color:#fff;padding:40px;font-family:sans-serif;text-align:center;">
+        <h1>My Personal AI Business Agent</h1>
+        <p>Autonomous Business OS is online. Dashboard template loading...</p>
+      </div>
+    `;
   }
 
   return (
