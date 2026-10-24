@@ -1538,23 +1538,13 @@ async function doLogin(demo = false) {
 
     const data = await res.json();
 
-    if (res.ok) {
-      const sessionRes = await fetch('/api/auth/session');
-      const sessionData = await sessionRes.json();
-
-      if (sessionData && sessionData.user) {
-        localStorage.setItem('owner_session_active', 'true');
-        document.getElementById('authWall').classList.add('hidden');
-        bootApp();
-        showToast('Successfully authenticated as Owner.');
-      } else {
-        localStorage.setItem('owner_session_active', 'true');
-        document.getElementById('authWall').classList.add('hidden');
-        bootApp();
-        showToast('Authentication successful.');
-      }
+    if (res.ok && !data.error) {
+      localStorage.setItem('owner_session_active', 'true');
+      document.getElementById('authWall').classList.add('hidden');
+      bootApp();
+      showToast('Successfully authenticated as Owner.');
     } else {
-      errBox.textContent = "Authentication failed. Please check your OWNER_EMAIL and password.";
+      errBox.textContent = data.error === 'CredentialsSignin' ? "Authentication failed: Invalid email or password." : (data.error || "Authentication failed. Please check your OWNER_EMAIL and password.");
       errBox.classList.remove('hidden');
     }
   } catch (err) {
