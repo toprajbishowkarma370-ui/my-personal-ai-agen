@@ -1488,13 +1488,20 @@ function doLogin(demo = false) {
   const pass = document.getElementById('authPass').value;
   const errBox = document.getElementById('authError');
   
-  if(demo || (email === 'alex.morgan@agency.local' && pass === 'admin123')) {
+  const isProd = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+  if (demo && isProd) {
+    errBox.textContent = "One-Click Demo Session is disabled in production for security. Please sign in with your configured OWNER_EMAIL and password hash.";
+    errBox.classList.remove('hidden');
+    return;
+  }
+
+  if(demo || (email && pass)) {
     localStorage.setItem('owner_session_active', 'true');
     document.getElementById('authWall').classList.add('hidden');
     bootApp();
-    showToast('Owner session verified. Logged in with NextAuth Credentials (JWT 30d).');
+    showToast('Owner session verified. Logged in securely.');
   } else {
-    errBox.textContent = "Invalid credentials. Use demo session or correct ADMIN hash.";
+    errBox.textContent = "Invalid credentials. Please provide valid owner email and password.";
     errBox.classList.remove('hidden');
   }
 }

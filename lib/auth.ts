@@ -1,4 +1,3 @@
-
 import { getServerSession } from "next-auth/next";
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -6,6 +5,15 @@ import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 
 export type Role = "ADMIN" | "AGENT" | "CLIENT";
+
+function validateProductionEnv() {
+  const required = ["NEXTAUTH_SECRET", "NEXTAUTH_URL", "DATABASE_URL", "OWNER_EMAIL", "OWNER_PASSWORD_HASH"];
+  const missing = required.filter((v) => !process.env[v]);
+  if (missing.length > 0 && process.env.NODE_ENV === "production") {
+    console.error(`[Auth] Configuration Error: Missing required production environment variables: ${missing.join(", ")}`);
+  }
+  return missing;
+}
 
 export const authOptions: NextAuthOptions = {
   session: {
@@ -20,6 +28,8 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
+        validateProductionEnv();
+
         if (!credentials?.email || !credentials?.password) {
           return null;
         }
