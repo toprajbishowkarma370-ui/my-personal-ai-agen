@@ -1518,6 +1518,7 @@ async function doLogin(demo = false) {
 
   try {
     const csrfRes = await fetch('/api/auth/csrf');
+    if (!csrfRes.ok) throw new Error("CSRF fetch failed");
     const csrfData = await csrfRes.json();
     const csrfToken = csrfData.csrfToken;
 
@@ -1536,7 +1537,7 @@ async function doLogin(demo = false) {
       body: formData.toString()
     });
 
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
     if (res.ok && !data.error) {
       localStorage.setItem('owner_session_active', 'true');
@@ -1544,24 +1545,51 @@ async function doLogin(demo = false) {
       bootApp();
       showToast('Successfully authenticated as Owner.');
     } else {
-      errBox.textContent = data.error === 'CredentialsSignin' ? "Authentication failed: Invalid email or password." : (data.error || "Authentication failed. Please check your OWNER_EMAIL and password.");
-      errBox.classList.remove('hidden');
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/api/auth/callback/credentials';
+      
+      const emailInput = document.createElement('input');
+      emailInput.type = 'hidden';
+      emailInput.name = 'email';
+      emailInput.value = email;
+      form.appendChild(emailInput);
+
+      const passInput = document.createElement('input');
+      passInput.type = 'hidden';
+      passInput.name = 'password';
+      passInput.value = pass;
+      form.appendChild(passInput);
+
+      document.body.appendChild(form);
+      form.submit();
+      return;
     }
   } catch (err) {
     try {
-      const sessionRes = await fetch('/api/auth/session');
-      const sessionData = await sessionRes.json();
-      if (sessionData && sessionData.user) {
-        localStorage.setItem('owner_session_active', 'true');
-        document.getElementById('authWall').classList.add('hidden');
-        bootApp();
-        showToast('Authenticated successfully.');
-        return;
-      }
-    } catch(e) {}
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/api/auth/callback/credentials';
+      
+      const emailInput = document.createElement('input');
+      emailInput.type = 'hidden';
+      emailInput.name = 'email';
+      emailInput.value = email;
+      form.appendChild(emailInput);
 
-    errBox.textContent = "Sign in error. Please verify Render environment variables (OWNER_EMAIL, OWNER_PASSWORD_HASH, NEXTAUTH_SECRET, NEXTAUTH_URL).";
-    errBox.classList.remove('hidden');
+      const passInput = document.createElement('input');
+      passInput.type = 'hidden';
+      passInput.name = 'password';
+      passInput.value = pass;
+      form.appendChild(passInput);
+
+      document.body.appendChild(form);
+      form.submit();
+      return;
+    } catch (formErr) {
+      errBox.textContent = "Sign in error. Please verify Render environment variables (OWNER_EMAIL, OWNER_PASSWORD_HASH, NEXTAUTH_SECRET, NEXTAUTH_URL).";
+      errBox.classList.remove('hidden');
+    }
   } finally {
     if (btn) {
       btn.textContent = "🔒 Authenticate as Owner";
