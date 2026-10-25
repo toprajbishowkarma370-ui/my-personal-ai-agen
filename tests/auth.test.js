@@ -50,3 +50,32 @@ test('Owner authorization logic simulation', async () => {
   const failEmail = await simulateAuthorize('someone@agency.local', 'admin123');
   assert.strictEqual(failEmail, null);
 });
+
+test('Google OAuth sign-in restriction simulation', async () => {
+  const ownerEmail = 'alex.morgan@agency.local';
+
+  async function simulateGoogleSignIn(userEmail, emailVerified) {
+    const trimmedOwner = ownerEmail.trim().toLowerCase();
+    const trimmedUser = userEmail?.trim().toLowerCase();
+
+    if (!emailVerified) {
+      return false; // rejected if unverified
+    }
+    if (trimmedUser === trimmedOwner) {
+      return true; // allowed
+    }
+    return false; // unauthorized account rejected
+  }
+
+  // 1. Valid verified owner email succeeds
+  const validResult = await simulateGoogleSignIn('alex.morgan@agency.local', true);
+  assert.strictEqual(validResult, true);
+
+  // 2. Unverified email fails even if email matches owner
+  const unverifiedResult = await simulateGoogleSignIn('alex.morgan@agency.local', false);
+  assert.strictEqual(unverifiedResult, false);
+
+  // 3. Unauthorized email fails
+  const unauthorizedResult = await simulateGoogleSignIn('random.hacker@gmail.com', true);
+  assert.strictEqual(unauthorizedResult, false);
+});

@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth/next";
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 
@@ -90,8 +91,35 @@ export const authOptions: NextAuthOptions = {
         return null;
       },
     }),
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+    }),
   ],
   callbacks: {
+    async signIn({ user, account, profile }) {
+      if (account?.provider === "google") {
+        const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
+        const userEmail = user.email?.trim().toLowerCase();
+        const isVerified = (profile as any)?.email_verified === true || (user as any)?.emailVerified;
+
+        console.log(`[Auth] Google OAuth sign-in attempt for email: ${userEmail}, verified: ${isVerified}`);
+
+        if (!isVerified) {
+          console.warn("[Auth] Google OAuth rejected: Email is not verified by Google.");
+          return false;
+        }
+
+        if (ownerEmail && userEmail === ownerEmail) {
+          (user as any).role = "ADMIN";
+          return true;
+        } else {
+          console.warn(`[Auth] Google OAuth rejected: Email ${userEmail} does not match configured OWNER_EMAIL.`);
+          return false;
+        }
+      }
+      return true;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
