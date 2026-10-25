@@ -74,7 +74,12 @@ input:focus,textarea:focus,select:focus{outline:none}
     <label class="text-[11px] font-bold text-slate-300">OWNER EMAIL</label>
     <input id="authEmail" value="alex.morgan@agency.local" class="mt-1 mb-3 w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm text-white" />
     <label class="text-[11px] font-bold text-slate-300">PASSWORD</label>
-    <input id="authPass" type="password" placeholder="••••••••" value="admin123" class="mt-1 w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm text-white" />
+    <div class="relative mt-1">
+      <input id="authPass" type="password" placeholder="••••••••" value="admin123" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 pr-10 text-sm text-white" />
+      <button type="button" id="togglePasswordBtn" onclick="togglePasswordVisibility()" aria-label="Show password" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white text-sm focus:outline-none">
+        <svg id="eyeIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+      </button>
+    </div>
     <div class="text-[11px] font-mono text-slate-500 mt-2">Demo: alex.morgan@agency.local / admin123 &nbsp;•&nbsp; Hash verified client-side (SHA-256 demo of bcrypt server hash)</div>
     <button onclick="doLogin()" id="loginBtn" class="mt-4 w-full py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-sm font-black transition">🔒 Authenticate as Owner</button>
     <button onclick="doLogin(true)" class="mt-2 w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold border border-slate-700">Use One-Click Demo Session</button>
@@ -1605,8 +1610,29 @@ function doLogout() {
   localStorage.removeItem('owner_session_active');
   location.reload();
 }
+function togglePasswordVisibility() {
+  const passInput = document.getElementById('authPass');
+  const toggleBtn = document.getElementById('togglePasswordBtn');
+  const eyeIcon = document.getElementById('eyeIcon');
+  if (!passInput) return;
+  
+  if (passInput.type === 'password') {
+    passInput.type = 'text';
+    if (toggleBtn) toggleBtn.setAttribute('aria-label', 'Hide password');
+    if (eyeIcon) {
+      eyeIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a10.05 10.05 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m14.41 14.41L17.41 17.41"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3l18 18"/>';
+    }
+  } else {
+    passInput.type = 'password';
+    if (toggleBtn) toggleBtn.setAttribute('aria-label', 'Show password');
+    if (eyeIcon) {
+      eyeIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>';
+    }
+  }
+}
 window.doLogin = doLogin;
 window.doLogout = doLogout;
+window.togglePasswordVisibility = togglePasswordVisibility;
 
 /* ============ NAV ============ */
 function toggleMobileNav() {
