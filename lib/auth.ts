@@ -35,8 +35,8 @@ export const authOptions: NextAuthOptions = {
         }
 
         const email = credentials.email.toLowerCase();
-        const ownerEmail = process.env.OWNER_EMAIL;
-        const ownerHash = process.env.OWNER_PASSWORD_HASH;
+        const ownerEmail = process.env.OWNER_EMAIL?.trim();
+        const ownerHash = process.env.OWNER_PASSWORD_HASH?.trim();
 
         if (
           ownerEmail &&
