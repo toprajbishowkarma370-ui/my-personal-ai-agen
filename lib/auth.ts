@@ -38,6 +38,9 @@ export const authOptions: NextAuthOptions = {
         const ownerEmail = process.env.OWNER_EMAIL?.trim();
         const ownerHash = process.env.OWNER_PASSWORD_HASH?.trim();
 
+        console.log(`[Auth] Attempting login for email length: ${email.length}`);
+        console.log(`[Auth] OWNER_EMAIL configured: ${!!ownerEmail}, OWNER_PASSWORD_HASH configured: ${!!ownerHash}, Hash valid prefix: ${ownerHash?.startsWith('$2')}`);
+
         if (
           ownerEmail &&
           ownerHash &&
@@ -47,6 +50,7 @@ export const authOptions: NextAuthOptions = {
             credentials.password,
             ownerHash
           );
+          console.log(`[Auth] Owner email match. Bcrypt comparison result: ${ok}`);
 
           if (ok) {
             return {
@@ -56,6 +60,8 @@ export const authOptions: NextAuthOptions = {
               role: "ADMIN",
             } as any;
           }
+        } else {
+          console.log(`[Auth] Owner email mismatch or missing config. Incoming email matched owner: ${email === ownerEmail?.toLowerCase()}`);
         }
 
         try {
