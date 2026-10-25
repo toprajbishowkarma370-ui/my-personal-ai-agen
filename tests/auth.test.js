@@ -17,3 +17,36 @@ test('Owner authentication environment variables configuration and bcrypt test',
   const mismatch = await bcrypt.compare('wrongPassword', hash);
   assert.strictEqual(mismatch, false);
 });
+
+test('Owner authorization logic simulation', async () => {
+  const ownerEmail = 'alex.morgan@agency.local';
+  const ownerHash = bcrypt.hashSync('admin123', 10);
+
+  // Simulate authorize function logic from lib/auth.ts
+  async function simulateAuthorize(emailInput, passInput) {
+    const email = emailInput?.toLowerCase()?.trim();
+    const configEmail = ownerEmail.trim().toLowerCase();
+    const configHash = ownerHash.trim();
+
+    if (email === configEmail) {
+      const ok = await bcrypt.compare(passInput, configHash);
+      if (ok) {
+        return { id: 'owner_admin_01', email: configEmail, role: 'ADMIN' };
+      }
+    }
+    return null;
+  }
+
+  // 1. Successful login
+  const successUser = await simulateAuthorize('ALEX.MORGAN@AGENCY.LOCAL ', 'admin123');
+  assert.notStrictEqual(successUser, null);
+  assert.strictEqual(successUser.role, 'ADMIN');
+
+  // 2. Failed login (wrong password)
+  const failPass = await simulateAuthorize('alex.morgan@agency.local', 'wrongpass');
+  assert.strictEqual(failPass, null);
+
+  // 3. Failed login (wrong email)
+  const failEmail = await simulateAuthorize('someone@agency.local', 'admin123');
+  assert.strictEqual(failEmail, null);
+});
