@@ -1680,6 +1680,7 @@ async function executeCommand() {
     const res = await fetch('/api/ai/command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ prompt: cmd, systemContext: "You are My Personal AI Business Agent for Chaurjahari & Karnali. Generate high quality code/response and structure execution steps." })
     });
 
