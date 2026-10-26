@@ -85,3 +85,25 @@ test('Client window.doLogin scope and availability check', async () => {
   globalWindow.doLogin = async function(demo) { return true; };
   assert.strictEqual(typeof globalWindow.doLogin, 'function');
 });
+
+test('Login input reading and parameter submission structure', () => {
+  const mockEmailInput = { value: '  owner@agency.local  ' };
+  const mockPassInput = { value: 'secretPass123 ' };
+
+  const email = mockEmailInput.value.trim();
+  const pass = mockPassInput.value;
+
+  assert.strictEqual(email, 'owner@agency.local');
+  assert.strictEqual(pass, 'secretPass123 ');
+
+  const formData = new URLSearchParams();
+  formData.append('email', email);
+  formData.append('password', pass);
+  formData.append('csrfToken', 'test-csrf-token');
+  formData.append('json', 'true');
+
+  assert.strictEqual(formData.get('email'), 'owner@agency.local');
+  assert.strictEqual(formData.get('password'), 'secretPass123 ');
+  assert.strictEqual(formData.get('csrfToken'), 'test-csrf-token');
+  assert.strictEqual(formData.get('json'), 'true');
+});

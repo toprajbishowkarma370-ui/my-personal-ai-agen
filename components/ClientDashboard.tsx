@@ -10,52 +10,6 @@ export default function ClientDashboard({ htmlContent }: { htmlContent: string }
     if (!containerRef.current) return;
     containerRef.current.innerHTML = htmlContent;
 
-    // Ensure window.doLogin is guaranteed to be defined immediately
-    if (typeof (window as any).doLogin !== 'function') {
-      (window as any).doLogin = async function(demo = false) {
-        const email = (document.getElementById('authEmail') as HTMLInputElement)?.value;
-        const pass = (document.getElementById('authPass') as HTMLInputElement)?.value;
-        const errBox = document.getElementById('authError');
-        if (!errBox) return;
-        if (!email || !pass) {
-          errBox.textContent = "Please enter both email and password.";
-          errBox.className = "mb-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs";
-          errBox.classList.remove('hidden');
-          return;
-        }
-        try {
-          const csrfRes = await fetch('/api/auth/csrf');
-          const csrfData = await csrfRes.json();
-          const formData = new URLSearchParams();
-          formData.append('email', email);
-          formData.append('password', pass);
-          formData.append('csrfToken', csrfData.csrfToken);
-          formData.append('json', 'true');
-
-          const res = await fetch('/api/auth/callback/credentials', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
-            body: formData.toString()
-          });
-          const data = await res.json().catch(() => ({}));
-          if (res.ok && !data.error && data.status !== 401) {
-            localStorage.setItem('owner_session_active', 'true');
-            const wall = document.getElementById('authWall');
-            if (wall) wall.classList.add('hidden');
-            if (typeof (window as any).bootApp === 'function') (window as any).bootApp();
-          } else {
-            errBox.textContent = "Sign in error: " + (data.error || "Invalid credentials.");
-            errBox.className = "mb-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs";
-            errBox.classList.remove('hidden');
-          }
-        } catch (err: any) {
-          errBox.textContent = "Sign in error: " + (err?.message || "Connection error.");
-          errBox.className = "mb-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs";
-          errBox.classList.remove('hidden');
-        }
-      };
-    }
-
     const scripts = containerRef.current.querySelectorAll('script');
     let loadedCount = 0;
     

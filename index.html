@@ -1493,33 +1493,48 @@ function bootApp() {
 
 /* ============ AUTH ============ */
 async function doLogin(demo = false) {
-  const email = document.getElementById('authEmail').value;
-  const pass = document.getElementById('authPass').value;
+  const emailInput = document.getElementById('authEmail');
+  const passInput = document.getElementById('authPass');
   const errBox = document.getElementById('authError');
-  errBox.textContent = "Diagnostic: Login handler started, connecting to NextAuth...";
-  errBox.className = "mb-3 p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/40 text-cyan-300 text-xs";
-  errBox.classList.remove('hidden');
-  
+
+  console.log("[Auth] Elements found - emailInput:", !!emailInput, "passInput:", !!passInput);
+
+  const email = emailInput ? emailInput.value.trim() : '';
+  const pass = passInput ? passInput.value : '';
+
+  console.log("[Auth] Field status - email non-empty:", email.length > 0, "pass non-empty:", pass.length > 0);
+
+  if (errBox) {
+    errBox.textContent = "Diagnostic: Login handler started, connecting to NextAuth...";
+    errBox.className = "mb-3 p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/40 text-cyan-300 text-xs";
+    errBox.classList.remove('hidden');
+  }
+
   const isProd = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
   if (demo && isProd) {
-    errBox.textContent = "One-Click Demo Session is disabled in production for security. Please sign in with your configured OWNER_EMAIL and password.";
-    errBox.className = "mb-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs";
-    errBox.classList.remove('hidden');
+    if (errBox) {
+      errBox.textContent = "One-Click Demo Session is disabled in production for security. Please sign in with your configured OWNER_EMAIL and password.";
+      errBox.className = "mb-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs";
+      errBox.classList.remove('hidden');
+    }
     return;
   }
 
   if (demo) {
     localStorage.setItem('owner_session_active', 'true');
-    document.getElementById('authWall').classList.add('hidden');
+    const wall = document.getElementById('authWall');
+    if (wall) wall.classList.add('hidden');
     bootApp();
     showToast('Demo owner session active.');
     return;
   }
 
   if (!email || !pass) {
-    errBox.textContent = "Please enter both email and password.";
-    errBox.className = "mb-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs";
-    errBox.classList.remove('hidden');
+    if (errBox) {
+      errBox.textContent = "Please enter both email and password.";
+      errBox.className = "mb-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs";
+      errBox.classList.remove('hidden');
+    }
     return;
   }
 
