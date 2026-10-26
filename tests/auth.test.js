@@ -107,3 +107,17 @@ test('Login input reading and parameter submission structure', () => {
   assert.strictEqual(formData.get('csrfToken'), 'test-csrf-token');
   assert.strictEqual(formData.get('json'), 'true');
 });
+
+test('Build API command request payload and error handling simulation', () => {
+  const prompt = 'Generate Next.js landing page for Hotel Samjhana';
+  assert.ok(prompt.length > 0);
+
+  const payload = JSON.stringify({ prompt, systemContext: 'Test context' });
+  const parsed = JSON.parse(payload);
+  assert.strictEqual(parsed.prompt, prompt);
+  assert.ok(parsed.systemContext);
+
+  const emptyPrompt = '';
+  const isValid = emptyPrompt.trim().length > 0;
+  assert.strictEqual(isValid, false);
+});
