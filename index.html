@@ -1617,8 +1617,28 @@ function togglePasswordVisibility() {
 window.doLogin = doLogin;
 window.doLogout = doLogout;
 window.togglePasswordVisibility = togglePasswordVisibility;
-function signInWithGoogle() {
-  window.location.href = '/api/auth/signin/google';
+async function signInWithGoogle() {
+  try {
+    const res = await fetch('/api/auth/csrf');
+    const data = await res.json();
+    const csrfToken = data.csrfToken;
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/api/auth/signin/google';
+
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'csrfToken';
+    input.value = csrfToken;
+    form.appendChild(input);
+
+    document.body.appendChild(form);
+    form.submit();
+  } catch (err) {
+    console.error('Google sign-in CSRF fetch error, falling back', err);
+    window.location.href = '/api/auth/signin/google';
+  }
 }
 window.signInWithGoogle = signInWithGoogle;
 
