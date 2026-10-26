@@ -72,15 +72,15 @@ input:focus,textarea:focus,select:focus{outline:none}
     <div class="text-xs text-slate-400 mb-4 leading-relaxed">Protected route gate mirrored from <span class="font-mono text-cyan-300">middleware.ts + lib/auth.ts</span>. Session is JWT (30 days). No secrets are exposed to the browser.</div>
     <div id="authError" class="hidden mb-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs"></div>
     <label class="text-[11px] font-bold text-slate-300">OWNER EMAIL</label>
-    <input id="authEmail" value="alex.morgan@agency.local" class="mt-1 mb-3 w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm text-white" />
+    <input id="authEmail" type="email" placeholder="owner@gmail.com" class="mt-1 mb-3 w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-sm text-white" />
     <label class="text-[11px] font-bold text-slate-300">PASSWORD</label>
     <div class="relative mt-1">
-      <input id="authPass" type="password" placeholder="••••••••" value="admin123" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 pr-10 text-sm text-white" />
+      <input id="authPass" type="password" placeholder="••••••••" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 pr-10 text-sm text-white" />
       <button type="button" id="togglePasswordBtn" onclick="togglePasswordVisibility()" aria-label="Show password" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white text-sm focus:outline-none">
         <svg id="eyeIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
       </button>
     </div>
-    <div class="text-[11px] font-mono text-slate-500 mt-2">Demo: alex.morgan@agency.local / admin123 &nbsp;•&nbsp; Hash verified client-side (SHA-256 demo of bcrypt server hash)</div>
+    <div class="text-[11px] font-mono text-slate-500 mt-2">Enter your configured OWNER_EMAIL and password. &nbsp;•&nbsp; NextAuth Credentials / Google OAuth</div>
     <button onclick="doLogin()" id="loginBtn" class="mt-4 w-full py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-sm font-black transition">🔒 Authenticate as Owner</button>
     <button onclick="signInWithGoogle()" class="mt-2 w-full py-3 bg-white hover:bg-slate-100 text-slate-900 rounded-xl text-sm font-bold flex items-center justify-center gap-2.5 transition shadow">
       <svg class="w-4 h-4" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-8.87z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.19v3.15C3.17 21.36 7.24 24 12 24z"/><path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.19C.43 8.12 0 9.87 0 11.7s.43 3.58 1.19 5.12l4.09-2.55z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.24 0 3.17 2.64 1.19 6.58l4.09 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/></svg>

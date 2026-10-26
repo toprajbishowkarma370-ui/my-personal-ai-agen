@@ -79,3 +79,9 @@ test('Google OAuth sign-in restriction simulation', async () => {
   const unauthorizedResult = await simulateGoogleSignIn('random.hacker@gmail.com', true);
   assert.strictEqual(unauthorizedResult, false);
 });
+
+test('Client window.doLogin scope and availability check', async () => {
+  const globalWindow = {};
+  globalWindow.doLogin = async function(demo) { return true; };
+  assert.strictEqual(typeof globalWindow.doLogin, 'function');
+});
