@@ -91,8 +91,8 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand-500/10 border border-brand-500/30 text-brand-400 mb-3 font-mono font-bold text-lg">
             AI
           </div>
-          <h1 className="text-xl font-black text-white tracking-tight">Owner Authentication</h1>
-          <p className="text-xs text-slate-400 mt-1">Autonomous Business OS — Secure Gateway</p>
+          <h1 className="text-xl font-black text-white tracking-tight">My Personal AI Business Agent</h1>
+          <p className="text-xs text-slate-400 mt-1">Owner Portal & Autonomous Business OS Login</p>
         </div>
 
         {error && (
