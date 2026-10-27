@@ -3,6 +3,9 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'My Personal AI Business Agent — Autonomous Business OS v3.8',
   description: 'Autonomous Business OS',
+  verification: {
+    google: 'q0r3UAkR9rQAseMVWa9M78aQTfBZm0u54mpm0DyNKyY',
+  },
 };
 
 export default function RootLayout({
@@ -14,7 +17,7 @@ export default function RootLayout({
     <html lang="en" className="h-full">
       <head>
         <meta name="google-site-verification" content="q0r3UAkR9rQAseMVWa9M78aQTfBZm0u54mpm0DyNKyY" />
-        script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://cdn.tailwindcss.com"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
