@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
@@ -34,22 +33,37 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const result = await signIn("credentials", {
-        redirect: false,
-        email,
-        password,
+      const csrfRes = await fetch('/api/auth/csrf');
+      if (!csrfRes.ok) throw new Error("CSRF fetch failed");
+      const csrfData = await csrfRes.json();
+      const csrfToken = csrfData.csrfToken;
+
+      const formData = new URLSearchParams();
+      formData.append('email', email);
+      formData.append('password', password);
+      formData.append('csrfToken', csrfToken);
+      formData.append('json', 'true');
+
+      const res = await fetch('/api/auth/callback/credentials', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json'
+        },
+        body: formData.toString()
       });
 
-      if (result?.error) {
-        setError(`Sign in error: ${result.error}`);
-      } else if (result?.ok) {
-        localStorage.setItem("owner_session_active", "true");
-        router.push("/");
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && !data.error && data.status !== 401) {
+        localStorage.setItem('owner_session_active', 'true');
+        window.location.href = '/';
       } else {
-        setError("Authentication failed. Please check credentials or environment variables.");
+        const errorMsg = data.error || (res.status === 401 ? 'Invalid Owner Email or Password.' : `Authentication failed (${res.status}). Please check credentials.`);
+        setError("Sign in error: " + errorMsg);
       }
     } catch (err: any) {
-      setError(`Sign in error: ${err?.message || "Network error"}`);
+      setError("Sign in error: " + (err?.message || "Network error connecting to NextAuth API."));
     } finally {
       setLoading(false);
     }
@@ -57,15 +71,15 @@ export default function LoginPage() {
 
   function handleGoogleLogin() {
     try {
-      signIn("google", { callbackUrl: "/" });
+      window.location.href = '/api/auth/signin/google';
     } catch (err: any) {
       setError(`Google sign-in error: ${err?.message || "Unable to initiate Google OAuth"}`);
     }
   }
 
   function handleDemoLogin() {
-    localStorage.setItem("owner_session_active", "true");
-    router.push("/");
+    localStorage.setItem('owner_session_active', 'true');
+    window.location.href = '/';
   }
 
   return (
