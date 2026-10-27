@@ -1619,9 +1619,30 @@ window.doLogout = doLogout;
 window.togglePasswordVisibility = togglePasswordVisibility;
 async function signInWithGoogle() {
   try {
+    console.log('[Auth] Google sign-in button clicked. Fetching CSRF token...');
     const res = await fetch('/api/auth/csrf');
     const data = await res.json();
     const csrfToken = data.csrfToken;
+
+    if (!csrfToken) {
+      throw new Error('CSRF token missing from response');
+    }
+    console.log('[Auth] CSRF token successfully retrieved. Requesting sign-in URL...');
+
+    const signinRes = await fetch('/api/auth/signin/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ csrfToken, json: true })
+    });
+
+    if (signinRes.ok) {
+      const signinData = await signinRes.json();
+      if (signinData && signinData.url) {
+        console.log('[Auth] Redirecting to OAuth provider URL...');
+        window.location.href = signinData.url;
+        return;
+      }
+    }
 
     const form = document.createElement('form');
     form.method = 'POST';
@@ -1633,10 +1654,16 @@ async function signInWithGoogle() {
     input.value = csrfToken;
     form.appendChild(input);
 
+    const jsonInput = document.createElement('input');
+    jsonInput.type = 'hidden';
+    jsonInput.name = 'json';
+    jsonInput.value = 'true';
+    form.appendChild(jsonInput);
+
     document.body.appendChild(form);
     form.submit();
   } catch (err) {
-    console.error('Google sign-in CSRF fetch error, falling back', err);
+    console.error('Google sign-in error, falling back to direct navigation', err.message);
     window.location.href = '/api/auth/signin/google';
   }
 }
