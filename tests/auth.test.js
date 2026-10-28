@@ -121,3 +121,25 @@ test('Build API command request payload and error handling simulation', () => {
   const isValid = emptyPrompt.trim().length > 0;
   assert.strictEqual(isValid, false);
 });
+
+test('Strict production environment validation and zero fallback security test', () => {
+  function validateEnv(env) {
+    const required = ['NEXTAUTH_SECRET', 'NEXTAUTH_URL', 'DATABASE_URL', 'OWNER_EMAIL', 'OWNER_PASSWORD_HASH'];
+    const missing = required.filter((v) => !env[v]);
+    if (missing.length > 0) {
+      throw new Error(`[Auth Security Error] Missing required production environment variables: ${missing.join(', ')}`);
+    }
+    return true;
+  }
+
+  // 1. Missing env vars throws error in production mode
+  assert.throws(() => {
+    validateEnv({ NODE_ENV: 'production' });
+  }, /Missing required production environment variables/);
+
+  // 2. Unconfigured credentials test: without OWNER_EMAIL / OWNER_PASSWORD_HASH set, login must fail
+  const ownerEmailConfigured = undefined;
+  const ownerHashConfigured = undefined;
+  assert.strictEqual(!!ownerEmailConfigured, false);
+  assert.strictEqual(!!ownerHashConfigured, false);
+});

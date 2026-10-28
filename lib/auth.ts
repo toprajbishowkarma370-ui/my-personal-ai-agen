@@ -11,7 +11,7 @@ function validateProductionEnv() {
   const required = ["NEXTAUTH_SECRET", "NEXTAUTH_URL", "DATABASE_URL", "OWNER_EMAIL", "OWNER_PASSWORD_HASH"];
   const missing = required.filter((v) => !process.env[v]);
   if (missing.length > 0 && process.env.NODE_ENV === "production") {
-    console.error(`[Auth] Configuration Error: Missing required production environment variables: ${missing.join(", ")}`);
+    throw new Error(`[Auth Security Error] Missing required production environment variables: ${missing.join(", ")}`);
   }
   return missing;
 }
@@ -38,8 +38,8 @@ export const authOptions: NextAuthOptions = {
         }
 
         const email = credentials.email?.toLowerCase()?.trim();
-        const ownerEmail = (process.env.OWNER_EMAIL?.trim() || "owner@agency.local").toLowerCase();
-        const ownerHash = process.env.OWNER_PASSWORD_HASH?.trim() || "$2a$10$PPkICpDpVjjd4BWmj/HQPu95Z9ZlZgT39ux9ioMT1icTmb0yVEmZW";
+        const ownerEmail = process.env.OWNER_EMAIL?.trim()?.toLowerCase();
+        const ownerHash = process.env.OWNER_PASSWORD_HASH?.trim();
 
         console.log(`[Auth] Attempting login for email length: ${email.length}`);
         console.log(`[Auth] OWNER_EMAIL configured: ${!!ownerEmail}, OWNER_PASSWORD_HASH configured: ${!!ownerHash}, Hash valid prefix: ${ownerHash?.startsWith('$2')}`);
@@ -142,7 +142,7 @@ export const authOptions: NextAuthOptions = {
     },
   },
   pages: { signIn: "/login" },
-  secret: process.env.NEXTAUTH_SECRET || "fallback-render-production-secret-key-2026-secure",
+  secret: process.env.NEXTAUTH_SECRET,
 };
 
 export async function getAuthSession() {
