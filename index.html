@@ -1619,13 +1619,45 @@ function togglePasswordVisibility() {
 window.doLogin = doLogin;
 window.doLogout = doLogout;
 window.togglePasswordVisibility = togglePasswordVisibility;
-function signInWithGoogle() {
+async function signInWithGoogle() {
+  const errBox = document.getElementById('authError');
   try {
-    console.log('[Auth] Initiating Google sign-in redirect...');
-    window.location.href = '/api/auth/signin/google';
+    if (errBox) { errBox.classList.add('hidden'); errBox.textContent = ''; }
+    console.log('[Auth] Fetching CSRF token for Google OAuth...');
+    const csrfRes = await fetch('/api/auth/csrf', { credentials: 'include' });
+    if (!csrfRes.ok) throw new Error('Failed to fetch CSRF token');
+    const csrfData = await csrfRes.json();
+    const csrfToken = csrfData.csrfToken;
+    if (!csrfToken) throw new Error('CSRF token missing');
+
+    console.log('[Auth] Requesting Google signin URL from NextAuth...');
+    const formData = new URLSearchParams();
+    formData.append('csrfToken', csrfToken);
+    formData.append('json', 'true');
+
+    const res = await fetch('/api/auth/signin/google', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      credentials: 'include',
+      body: formData.toString()
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.url) {
+      console.log('[Auth] Redirecting to Google OAuth URL:', data.url);
+      window.location.href = data.url;
+    } else {
+      throw new Error(data.error || 'Failed to initiate Google sign-in');
+    }
   } catch (err) {
     console.error('Google sign-in error:', err);
-    window.location.href = '/api/auth/signin/google';
+    if (errBox) {
+      errBox.textContent = 'Google Sign-In Error: ' + (err.message || 'Unable to connect to NextAuth');
+      errBox.classList.remove('hidden');
+    }
   }
 }
 window.signInWithGoogle = signInWithGoogle;
