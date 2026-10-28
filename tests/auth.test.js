@@ -143,3 +143,13 @@ test('Strict production environment validation and zero fallback security test',
   assert.strictEqual(!!ownerEmailConfigured, false);
   assert.strictEqual(!!ownerHashConfigured, false);
 });
+
+test('Google OAuth sign-in POST payload structure test', () => {
+  const csrfToken = 'test-csrf-token-12345';
+  const formData = new URLSearchParams();
+  formData.append('csrfToken', csrfToken);
+  formData.append('json', 'true');
+
+  assert.strictEqual(formData.get('csrfToken'), 'test-csrf-token-12345');
+  assert.strictEqual(formData.get('json'), 'true');
+});

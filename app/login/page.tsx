@@ -70,9 +70,35 @@ export default function LoginPage() {
     }
   }
 
-  function handleGoogleLogin() {
+  async function handleGoogleLogin() {
+    setError("");
     try {
-      window.location.href = '/api/auth/signin/google';
+      const csrfRes = await fetch('/api/auth/csrf', { credentials: 'include' });
+      if (!csrfRes.ok) throw new Error("CSRF fetch failed");
+      const csrfData = await csrfRes.json();
+      const csrfToken = csrfData.csrfToken;
+      if (!csrfToken) throw new Error("CSRF token missing");
+
+      const formData = new URLSearchParams();
+      formData.append('csrfToken', csrfToken);
+      formData.append('json', 'true');
+
+      const res = await fetch('/api/auth/signin/google', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json'
+        },
+        credentials: 'include',
+        body: formData.toString()
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error(data.error || "Failed to initiate Google sign-in");
+      }
     } catch (err: any) {
       setError(`Google sign-in error: ${err?.message || "Unable to initiate Google OAuth"}`);
     }
