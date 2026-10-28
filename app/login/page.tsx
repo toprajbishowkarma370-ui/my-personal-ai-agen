@@ -69,8 +69,14 @@ export default function LoginPage() {
     }
   }
 
-  function handleGoogleLogin() {
+  async function handleGoogleLogin() {
     try {
+      const res = await fetch('/api/auth/providers');
+      const providers = await res.json().catch(() => ({}));
+      if (!providers || !providers.google) {
+        setError("Google sign-in is not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Render environment variables.");
+        return;
+      }
       window.location.href = '/api/auth/signin/google';
     } catch (err: any) {
       setError(`Google sign-in error: ${err?.message || "Unable to initiate Google OAuth"}`);
