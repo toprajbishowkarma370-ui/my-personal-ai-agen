@@ -8,30 +8,36 @@ export default function ClientDashboard({ htmlContent }: { htmlContent: string }
 
   useEffect(() => {
     if (!containerRef.current) return;
-    containerRef.current.innerHTML = htmlContent;
 
-    const scripts = containerRef.current.querySelectorAll('script');
-    let loadedCount = 0;
-    
-    scripts.forEach((oldScript) => {
-      const newScript = document.createElement('script');
-      Array.from(oldScript.attributes).forEach((attr) => {
-        newScript.setAttribute(attr.name, attr.value);
-      });
-      if (oldScript.src) {
-        newScript.src = oldScript.src;
-        newScript.onload = () => {
-          loadedCount++;
-          setDiagnosticStatus(`Scripts loaded (${loadedCount}/${scripts.length}). window.doLogin: ${typeof (window as any).doLogin}`);
-        };
-        newScript.onerror = () => {
-          setDiagnosticStatus(`Error loading script: ${oldScript.src}`);
-        };
-      } else {
-        newScript.textContent = oldScript.textContent;
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = htmlContent;
+    const scripts = tempDiv.querySelectorAll('script');
+
+    const inlineScripts: string[] = [];
+    const externalSrcs: string[] = [];
+
+    scripts.forEach((s) => {
+      if (s.src) {
+        externalSrcs.push(s.src);
+      } else if (s.textContent) {
+        inlineScripts.push(s.textContent);
       }
-      oldScript.parentNode?.replaceChild(newScript, oldScript);
+      s.remove();
     });
+
+    containerRef.current.innerHTML = tempDiv.innerHTML;
+
+    let executedCount = 0;
+    inlineScripts.forEach((scriptCode) => {
+      try {
+        eval(scriptCode);
+        executedCount++;
+      } catch (err) {
+        console.error("Dashboard script execution error:", err);
+      }
+    });
+
+    setDiagnosticStatus(`Scripts executed (${executedCount} blocks). window.doLogin: ${typeof (window as any).doLogin}`);
 
     const timer = setTimeout(() => {
       const hasLogin = typeof (window as any).doLogin === 'function';
