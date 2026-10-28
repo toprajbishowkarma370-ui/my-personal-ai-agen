@@ -1620,10 +1620,40 @@ window.doLogout = doLogout;
 window.togglePasswordVisibility = togglePasswordVisibility;
 function signInWithGoogle() {
   try {
-    window.location.href = '/api/auth/signin/google';
+    console.log('[Auth] Google sign-in button clicked. Fetching CSRF token...');
+    fetch('/api/auth/csrf')
+      .then(res => res.json())
+      .then(data => {
+        const csrfToken = data.csrfToken;
+        if (!csrfToken) {
+          throw new Error('CSRF token missing from response');
+        }
+        console.log('[Auth] CSRF token successfully retrieved. Requesting sign-in URL...');
+        return fetch('/api/auth/signin/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ csrfToken, json: true })
+        });
+      })
+      .then(signinRes => {
+        if (signinRes && signinRes.ok) {
+          return signinRes.json().then(signinData => {
+            if (signinData && signinData.url) {
+              console.log('[Auth] Redirecting to OAuth provider URL...');
+              window.location.href = signinData.url;
+              return;
+            }
+          });
+        }
+        window.location.href = '/api/auth/signin/google';
+      })
+      .catch(err => {
+        console.error('Google sign-in error, falling back to direct navigation', err.message);
+        window.location.href = '/api/auth/signin/google';
+      });
   } catch (err) {
-    console.error('Google sign-in redirection error:', err);
-    alert('Unable to initiate Google sign-in. Please try again.');
+    console.error('Google sign-in error:', err);
+    window.location.href = '/api/auth/signin/google';
   }
 }
 window.signInWithGoogle = signInWithGoogle;
