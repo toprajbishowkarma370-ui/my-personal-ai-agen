@@ -33,7 +33,7 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const csrfRes = await fetch('/api/auth/csrf');
+      const csrfRes = await fetch('/api/auth/csrf', { credentials: 'include' });
       if (!csrfRes.ok) throw new Error("CSRF fetch failed");
       const csrfData = await csrfRes.json();
       const csrfToken = csrfData.csrfToken;
@@ -50,6 +50,7 @@ export default function LoginPage() {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json'
         },
+        credentials: 'include',
         body: formData.toString()
       });
 
