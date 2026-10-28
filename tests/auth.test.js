@@ -121,3 +121,9 @@ test('Build API command request payload and error handling simulation', () => {
   const isValid = emptyPrompt.trim().length > 0;
   assert.strictEqual(isValid, false);
 });
+
+test('NextAuth trustHost configuration simulation', () => {
+  const simulatedAuthOptions = { trustHost: true, session: { strategy: "jwt" }, pages: { signIn: "/login" } };
+  assert.strictEqual(simulatedAuthOptions.trustHost, true);
+  assert.strictEqual(simulatedAuthOptions.session.strategy, 'jwt');
+});

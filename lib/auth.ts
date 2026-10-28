@@ -16,7 +16,9 @@ function validateProductionEnv() {
   return missing;
 }
 
-export const authOptions: NextAuthOptions = {
+export const authOptions: NextAuthOptions & { trustHost?: boolean } = {
+  trustHost: true,
+  
   session: {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60,
