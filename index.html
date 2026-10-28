@@ -1547,7 +1547,7 @@ async function doLogin(demo = false) {
   }
 
   try {
-    const csrfRes = await fetch('/api/auth/csrf');
+    const csrfRes = await fetch('/api/auth/csrf', { credentials: 'include' });
     if (!csrfRes.ok) throw new Error("CSRF fetch failed");
     const csrfData = await csrfRes.json();
     const csrfToken = csrfData.csrfToken;
@@ -1564,6 +1564,7 @@ async function doLogin(demo = false) {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json'
       },
+      credentials: 'include',
       body: formData.toString()
     });
 
@@ -1621,7 +1622,7 @@ window.togglePasswordVisibility = togglePasswordVisibility;
 function signInWithGoogle() {
   try {
     console.log('[Auth] Google sign-in button clicked. Fetching CSRF token...');
-    fetch('/api/auth/csrf')
+    fetch('/api/auth/csrf', { credentials: 'include' })
       .then(res => res.json())
       .then(data => {
         const csrfToken = data.csrfToken;
@@ -1632,6 +1633,7 @@ function signInWithGoogle() {
         return fetch('/api/auth/signin/google', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ csrfToken, json: true })
         });
       })
