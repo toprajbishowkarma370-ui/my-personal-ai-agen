@@ -1,36 +1,36 @@
 {
   "invoices": [
     [
-      "inv_1793281540942_h9ba0",
+      "inv_1793281956159_6c0oe",
       {
-        "id": "inv_1793281540942_h9ba0",
+        "id": "inv_1793281956159_6c0oe",
         "customerName": "Charlie",
         "amount": 300,
         "description": "",
         "status": "Pending",
         "transactionRef": null,
         "receiptPath": null,
-        "createdAt": "2026-10-29T13:45:40.942Z",
-        "updatedAt": "2026-10-29T13:45:40.942Z",
+        "createdAt": "2026-10-29T13:52:36.159Z",
+        "updatedAt": "2026-10-29T13:52:36.159Z",
         "verifiedAt": null
       }
     ]
   ],
   "ownerSettings": {
     "qrImageUrl": "https://example.com/charlie-qr.png",
-    "updatedAt": "2026-10-29T13:45:40.942Z"
+    "updatedAt": "2026-10-29T13:52:36.160Z"
   },
   "auditLogs": [
     {
-      "id": "log_1793281540942_11sq0",
-      "timestamp": "2026-10-29T13:45:40.942Z",
+      "id": "log_1793281956159_93sa5",
+      "timestamp": "2026-10-29T13:52:36.159Z",
       "action": "CREATE_INVOICE",
-      "details": "Invoice inv_1793281540942_h9ba0 created for amount 300",
+      "details": "Invoice inv_1793281956159_6c0oe created for amount 300",
       "actor": "system"
     },
     {
-      "id": "log_1793281540942_6pedi",
-      "timestamp": "2026-10-29T13:45:40.942Z",
+      "id": "log_1793281956160_r0zay",
+      "timestamp": "2026-10-29T13:52:36.160Z",
       "action": "UPDATE_QR_SETTINGS",
       "details": "Owner updated payment QR settings",
       "actor": "owner"
