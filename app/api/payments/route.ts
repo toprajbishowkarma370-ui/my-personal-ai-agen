@@ -22,6 +22,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    await requireAdminSession();
     const body = await req.json();
     const { invoiceId, amount, method, referenceNumber, evidenceMetadata, currency = "NPR" } = body;
 
@@ -34,33 +35,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Invoice not found" }, { status: 404 });
     }
 
-    // Bank transfers start as PENDING verification; online gateways might be COMPLETED
-    const initialStatus = method === "BANK_TRANSFER" ? "PENDING" : "COMPLETED";
-
+    // All payments start as PENDING and require owner verification before marking invoice PAID.
+    // Never auto-mark an invoice PAID without explicit owner verification.
     const payment = await prisma.payment.create({
       data: {
         invoiceId,
         amount: Number(amount),
         currency,
         method,
-        status: initialStatus,
+        status: "PENDING",
         referenceNumber: referenceNumber || null,
         evidenceMetadata: evidenceMetadata ? JSON.stringify(evidenceMetadata) : null,
       },
     });
 
-    if (initialStatus === "COMPLETED" && method !== "BANK_TRANSFER") {
-      // Check if invoice is fully paid
-      const allPayments = await prisma.payment.findMany({ where: { invoiceId, status: "COMPLETED" } });
-      const paidSum = allPayments.reduce((acc, p) => acc + p.amount, 0) + Number(amount);
-      if (paidSum >= invoice.total) {
-        await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "PAID" } });
-      } else {
-        await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "PARTIALLY_PAID" } });
-      }
-    }
-
-    await logAction("payment.create", JSON.stringify({ id: payment.id, invoiceId, amount, method, status: initialStatus }));
+    await logAction("payment.create", JSON.stringify({ id: payment.id, invoiceId, amount, method, status: "PENDING" }));
     return NextResponse.json({ success: true, payment }, { status: 201 });
   } catch (err: any) {
     console.error("POST /api/payments error", err);

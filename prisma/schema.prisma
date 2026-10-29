@@ -72,6 +72,7 @@ model Customer {
   location  String   @default("Chaurjahari, Karnali")
   leads     Lead[]
   projects  Project[]
+  websites  Website[]
   invoices  Invoice[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -95,6 +96,7 @@ model Lead {
   approvals   Approval[]
   outreaches  Outreach[]
   projects    Project[]
+  websites    Website[]
   invoices    Invoice[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
@@ -139,6 +141,30 @@ model Project {
   customer   Customer? @relation(fields: [customerId], references: [id])
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+}
+
+model Website {
+  id              String   @id @default(cuid())
+  name            String
+  slug            String   @unique
+  template        String   // one of the 10 starter templates
+  status          String   @default("DRAFT") // DRAFT, EDITING, PENDING_OWNER_APPROVAL, APPROVED, PUBLISHED, ARCHIVED
+  isArchived      Boolean  @default(false)
+  ownerApproved   Boolean  @default(false)
+  ownerApprovedAt DateTime?
+  ownerApprovedBy String?
+  previewUrl      String?
+  publishUrl      String?
+  data            String?  @db.Text // JSON: business content, pages, sections
+  content         String?  @db.Text // JSON: rendered page content per breakpoint
+  theme           String?  @db.Text // JSON: colors, typography, branding
+  settings        String?  @db.Text // JSON: domain, seo, analytics, status flags
+  leadId          String?
+  lead            Lead?    @relation(fields: [leadId], references: [id])
+  customerId      String?
+  customer        Customer? @relation(fields: [customerId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model Outreach {

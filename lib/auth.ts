@@ -7,22 +7,22 @@ import { prisma } from "./prisma";
 
 export type Role = "ADMIN" | "AGENT" | "CLIENT";
 
-if (!process.env.NEXTAUTH_SECRET) {
-  process.env.NEXTAUTH_SECRET = "fallback_nextauth_secret_render_production";
-}
-if (!process.env.NEXTAUTH_URL) {
-  process.env.NEXTAUTH_URL = "https://my-personal-ai-agen-2.onrender.com";
+function isProduction() {
+  return process.env.NODE_ENV === "production";
 }
 
-function validateProductionEnv() {
+function validateProductionEnv(): string[] {
   const required = ["NEXTAUTH_SECRET", "NEXTAUTH_URL", "DATABASE_URL", "OWNER_EMAIL", "OWNER_PASSWORD_HASH"];
   const missing = required.filter((v) => !process.env[v]);
-  if (missing.length > 0 && process.env.NODE_ENV === "production") {
+  if (missing.length > 0 && isProduction()) {
     throw new Error(`[Auth Security Error] Missing required production environment variables: ${missing.join(", ")}`);
   }
   return missing;
 }
 
+// Do not validate at module load time: the build and dev server import this module
+// before production environment variables are available. Validation happens lazily at
+// request time inside authorize(), so production never starts with silent fallback secrets.
 export const authOptions: NextAuthOptions = {
   // @ts-ignore
   trustHost: true,
@@ -38,6 +38,7 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
+        // Fail safely in production: never authenticate when required secrets are absent.
         validateProductionEnv();
 
         if (!credentials?.email || !credentials?.password) {
@@ -48,19 +49,8 @@ export const authOptions: NextAuthOptions = {
         const ownerEmail = process.env.OWNER_EMAIL?.trim()?.toLowerCase();
         const ownerHash = process.env.OWNER_PASSWORD_HASH?.trim();
 
-        console.log(`[Auth] Attempting login for email length: ${email.length}`);
-        console.log(`[Auth] OWNER_EMAIL configured: ${!!ownerEmail}, OWNER_PASSWORD_HASH configured: ${!!ownerHash}, Hash valid prefix: ${ownerHash?.startsWith('$2')}`);
-
-        if (
-          ownerEmail &&
-          ownerHash &&
-          email === ownerEmail.toLowerCase()
-        ) {
-          const ok = await bcrypt.compare(
-            credentials.password,
-            ownerHash
-          );
-          console.log(`[Auth] Owner email match. Bcrypt comparison result: ${ok}`);
+        if (ownerEmail && ownerHash && email === ownerEmail) {
+          const ok = await bcrypt.compare(credentials.password, ownerHash);
 
           if (ok) {
             return {
@@ -70,8 +60,6 @@ export const authOptions: NextAuthOptions = {
               role: "ADMIN",
             } as any;
           }
-        } else {
-          console.log(`[Auth] Owner email mismatch or missing config. Incoming email matched owner: ${email === ownerEmail?.toLowerCase()}`);
         }
 
         try {
@@ -79,13 +67,7 @@ export const authOptions: NextAuthOptions = {
             where: { email },
           });
 
-          if (
-            user?.passwordHash &&
-            await bcrypt.compare(
-              credentials.password,
-              user.passwordHash
-            )
-          ) {
+          if (user?.passwordHash && await bcrypt.compare(credentials.password, user.passwordHash)) {
             return {
               id: user.id,
               email: user.email,
@@ -123,20 +105,15 @@ export const authOptions: NextAuthOptions = {
         const userEmail = user.email?.trim().toLowerCase();
         const isVerified = (profile as any)?.email_verified === true || (user as any)?.emailVerified;
 
-        console.log(`[Auth] Google OAuth sign-in attempt for email: ${userEmail}, verified: ${isVerified}`);
-
         if (!isVerified) {
-          console.warn("[Auth] Google OAuth rejected: Email is not verified by Google.");
           return false;
         }
 
         if (ownerEmail && userEmail === ownerEmail) {
           (user as any).role = "ADMIN";
           return true;
-        } else {
-          console.warn(`[Auth] Google OAuth rejected: Email ${userEmail} does not match configured OWNER_EMAIL.`);
-          return false;
         }
+        return false;
       }
       return true;
     },
@@ -156,7 +133,7 @@ export const authOptions: NextAuthOptions = {
     },
   },
   pages: { signIn: "/login" },
-  secret: "fixed_fallback_secret_string_for_render_production",
+  secret: process.env.NEXTAUTH_SECRET,
 };
 
 export async function getAuthSession() {
@@ -182,4 +159,17 @@ export async function requireAgentSession() {
   }
 
   return session;
+}
+
+export function requireOwnerEmail() {
+  const ownerEmail = process.env.OWNER_EMAIL?.trim();
+  if (!ownerEmail) {
+    throw new Error("UNAUTHORIZED: OWNER_EMAIL not configured");
+  }
+  return ownerEmail.toLowerCase();
+}
+
+export function isOwner(email?: string | null) {
+  if (!email) return false;
+  return email.trim().toLowerCase() === requireOwnerEmail();
 }
