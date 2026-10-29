@@ -38,10 +38,9 @@ export default function LoginPage() {
 
     try {
       // NextAuth v4 supported client API: establishes a REAL session cookie.
-      // NOTE: do NOT pass redirect: false for the credentials provider —
-      // next-auth/react v4 ignores redirect:false for credentials and performs
-      // an internal window.location.href navigation, which would make the
-      // localStorage + router.push below dead code and break the session hand-off.
+      // redirect defaults to true so signIn returns { ok, url } without navigating
+      // internally; we then set localStorage and do a full-page reload to "/" so the
+      // dashboard's DOMContentLoaded auth-wall check re-runs and hides the wall.
       const result = await signIn("credentials", {
         email,
         password,
@@ -54,11 +53,12 @@ export default function LoginPage() {
       }
 
       // Keep the legacy static dashboard's auth wall in sync now that a real NextAuth
-      // session cookie exists.
+      // session cookie exists. Full-page reload so DOMContentLoaded re-evaluates the
+      // localStorage-owned auth wall and boots the app.
       if (typeof localStorage !== "undefined") {
         localStorage.setItem("owner_session_active", "true");
       }
-      router.push(callbackUrl);
+      window.location.href = callbackUrl;
     } catch (err: any) {
       setError("Sign in error: " + (err?.message || "Network error connecting to NextAuth API."));
     } finally {
@@ -101,7 +101,7 @@ export default function LoginPage() {
       if (typeof localStorage !== "undefined") {
         localStorage.setItem("owner_session_active", "true");
       }
-      router.push(callbackUrl);
+      window.location.href = callbackUrl;
     } catch (err: any) {
       setError(`Google sign-in error: ${err?.message || "Unable to initiate Google OAuth"}`);
     } finally {
@@ -113,7 +113,7 @@ export default function LoginPage() {
     if (typeof localStorage !== "undefined") {
       localStorage.setItem("owner_session_active", "true");
     }
-    router.push(callbackUrl);
+    window.location.href = callbackUrl;
   }
 
   return (
