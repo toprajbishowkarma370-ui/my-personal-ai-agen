@@ -53,24 +53,17 @@ export default function ClientDashboard({ htmlContent }: { htmlContent: string }
 
     const handleLoginClick = (e: Event) => {
       setClickCount((c) => c + 1);
-      const fnExists = typeof (window as any).doLogin === 'function';
-      if (!fnExists) {
-        e.preventDefault();
-        setDiagnosticStatus(`Click fired! Error: window.doLogin is undefined.`);
-      } else {
-        setDiagnosticStatus(`Click fired! Executing window.doLogin()...`);
-      }
+      // The login button now navigates to /login (real NextAuth signIn). Do not block
+      // navigation; only record the click for diagnostics.
+      setDiagnosticStatus(`Click fired! Redirecting to /login for a real NextAuth session...`);
     };
 
     const handleGoogleClick = (e: Event) => {
       setClickCount((c) => c + 1);
-      const fnExists = typeof (window as any).signInWithGoogle === 'function';
-      if (!fnExists) {
-        e.preventDefault();
-        setDiagnosticStatus(`Google Click fired! Error: window.signInWithGoogle is undefined.`);
-      } else {
-        setDiagnosticStatus(`Google Click fired! Executing window.signInWithGoogle()...`);
-      }
+      // The Google button now navigates to /login where signIn("google") from
+      // next-auth/react initiates OAuth. Do not rely on or block on the legacy
+      // window.signInWithGoogle global, and do not prevent navigation.
+      setDiagnosticStatus(`Google Click fired! Redirecting to /login for Google OAuth...`);
     };
 
     bindLoginButton();
