@@ -38,11 +38,14 @@ export default function LoginPage() {
 
     try {
       // NextAuth v4 supported client API: establishes a REAL session cookie.
+      // NOTE: do NOT pass redirect: false for the credentials provider —
+      // next-auth/react v4 ignores redirect:false for credentials and performs
+      // an internal window.location.href navigation, which would make the
+      // localStorage + router.push below dead code and break the session hand-off.
       const result = await signIn("credentials", {
         email,
         password,
         callbackUrl,
-        redirect: false,
       });
 
       if (result?.error) {
