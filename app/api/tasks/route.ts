@@ -29,3 +29,30 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: err?.message || String(err) }, { status: 500 });
   }
 }
+
+export async function PATCH(req: Request) {
+  try {
+    await requireAdminSession();
+    const body = await req.json();
+    const { id, status, priority, description } = body;
+    if (!id) {
+      return NextResponse.json({ success: false, error: "Task id is required" }, { status: 400 });
+    }
+
+    const updateData: any = {};
+    if (status !== undefined) updateData.status = status;
+    if (priority !== undefined) updateData.priority = priority;
+    if (description !== undefined) updateData.description = description;
+
+    const updated = await prisma.task.update({
+      where: { id },
+      data: updateData,
+    });
+
+    await logAction("task.update", JSON.stringify({ id, status: updated.status }));
+    return NextResponse.json({ success: true, task: updated });
+  } catch (err: any) {
+    console.error("PATCH /api/tasks error", err);
+    return NextResponse.json({ success: false, error: err?.message || String(err) }, { status: 500 });
+  }
+}

@@ -18,12 +18,14 @@ function validateProductionEnv() {
   const required = ["NEXTAUTH_SECRET", "NEXTAUTH_URL", "DATABASE_URL", "OWNER_EMAIL", "OWNER_PASSWORD_HASH"];
   const missing = required.filter((v) => !process.env[v]);
   if (missing.length > 0 && process.env.NODE_ENV === "production") {
-    console.error(`[Auth] Configuration Error: Missing required production environment variables: ${missing.join(", ")}`);
+    throw new Error(`[Auth Security Error] Missing required production environment variables: ${missing.join(", ")}`);
   }
   return missing;
 }
 
 export const authOptions: NextAuthOptions = {
+  // @ts-ignore
+  trustHost: true,
   session: {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60,
@@ -42,8 +44,8 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const email = credentials.email.toLowerCase();
-        const ownerEmail = process.env.OWNER_EMAIL?.trim();
+        const email = credentials.email?.toLowerCase()?.trim();
+        const ownerEmail = process.env.OWNER_EMAIL?.trim()?.toLowerCase();
         const ownerHash = process.env.OWNER_PASSWORD_HASH?.trim();
 
         console.log(`[Auth] Attempting login for email length: ${email.length}`);
@@ -98,17 +100,21 @@ export const authOptions: NextAuthOptions = {
         return null;
       },
     }),
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || "",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-      authorization: {
-        params: {
-          prompt: "select_account",
-          access_type: "offline",
-          response_type: "code",
-        },
-      },
-    }),
+    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+      ? [
+          GoogleProvider({
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            authorization: {
+              params: {
+                prompt: "select_account",
+                access_type: "offline",
+                response_type: "code",
+              },
+            },
+          }),
+        ]
+      : []),
   ],
   callbacks: {
     async signIn({ user, account, profile }) {

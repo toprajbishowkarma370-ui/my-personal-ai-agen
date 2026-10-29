@@ -1,6 +1,7 @@
 <html lang="en" class="h-full">
 <head>
 <meta charset="UTF-8" />
+<meta name="google-site-verification" content="q0r3UAkR9rQAseMVWa9M78aQTfBZm0u54mpm0DyNKyY" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="theme-color" content="#070a14" />
 <title>My Personal AI Business Agent — Autonomous Business OS v3.8</title>
@@ -1546,7 +1547,7 @@ async function doLogin(demo = false) {
   }
 
   try {
-    const csrfRes = await fetch('/api/auth/csrf');
+    const csrfRes = await fetch('/api/auth/csrf', { credentials: 'include' });
     if (!csrfRes.ok) throw new Error("CSRF fetch failed");
     const csrfData = await csrfRes.json();
     const csrfToken = csrfData.csrfToken;
@@ -1563,6 +1564,7 @@ async function doLogin(demo = false) {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json'
       },
+      credentials: 'include',
       body: formData.toString()
     });
 
@@ -1618,32 +1620,46 @@ window.doLogin = doLogin;
 window.doLogout = doLogout;
 window.togglePasswordVisibility = togglePasswordVisibility;
 async function signInWithGoogle() {
+  const errBox = document.getElementById('authError');
   try {
-    const res = await fetch('/api/auth/csrf');
-    const data = await res.json();
-    const csrfToken = data.csrfToken;
+    if (errBox) { errBox.classList.add('hidden'); errBox.textContent = ''; }
+    console.log('[Auth] Fetching CSRF token for Google OAuth...');
+    const csrfRes = await fetch('/api/auth/csrf', { credentials: 'include' });
+    if (!csrfRes.ok) throw new Error('Failed to fetch CSRF token');
+    const csrfData = await csrfRes.json();
+    const csrfToken = csrfData.csrfToken;
+    if (!csrfToken) throw new Error('CSRF token missing');
 
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = '/api/auth/signin/google';
+    console.log('[Auth] Requesting Google signin URL from NextAuth...');
+    const formData = new URLSearchParams();
+    formData.append('csrfToken', csrfToken);
+    formData.append('json', 'true');
 
-    const inputCsrf = document.createElement('input');
-    inputCsrf.type = 'hidden';
-    inputCsrf.name = 'csrfToken';
-    inputCsrf.value = csrfToken;
-    form.appendChild(inputCsrf);
+    formData.append('callbackUrl', '/');
 
-    const inputCallback = document.createElement('input');
-    inputCallback.type = 'hidden';
-    inputCallback.name = 'callbackUrl';
-    inputCallback.value = '/';
-    form.appendChild(inputCallback);
+    const res = await fetch('/api/auth/signin/google', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      credentials: 'include',
+      body: formData.toString()
+    });
 
-    document.body.appendChild(form);
-    form.submit();
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.url) {
+      console.log('[Auth] Redirecting to Google OAuth URL:', data.url);
+      window.location.href = data.url;
+    } else {
+      throw new Error(data.error || 'Failed to initiate Google sign-in');
+    }
   } catch (err) {
-    console.error('Google sign-in CSRF fetch error, falling back', err);
-    window.location.href = '/api/auth/signin/google';
+    console.error('Google sign-in error:', err);
+    if (errBox) {
+      errBox.textContent = 'Google Sign-In Error: ' + (err.message || 'Unable to connect to NextAuth');
+      errBox.classList.remove('hidden');
+    }
   }
 }
 window.signInWithGoogle = signInWithGoogle;
