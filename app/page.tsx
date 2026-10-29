@@ -1,10 +1,18 @@
 import fs from 'fs';
 import path from 'path';
+import { getServerSession } from 'next-auth/next';
+import { redirect } from 'next/navigation';
+import { authOptions } from '@/lib/auth';
 import ClientDashboard from '@/components/ClientDashboard';
 
 export const dynamic = 'force-dynamic';
 
 export default function Page() {
+  const session = getServerSession(authOptions);
+  if (!session) {
+    redirect('/login');
+  }
+
   const pathsToTry = [
     path.join(process.cwd(), 'index.html'),
     path.join(process.cwd(), 'public', 'index.html'),
