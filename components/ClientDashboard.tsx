@@ -44,6 +44,11 @@ export default function ClientDashboard({ htmlContent }: { htmlContent: string }
         loginBtn.removeEventListener('click', handleLoginClick);
         loginBtn.addEventListener('click', handleLoginClick);
       }
+      const googleBtn = containerRef.current?.querySelector('#googleLoginBtn');
+      if (googleBtn) {
+        googleBtn.removeEventListener('click', handleGoogleClick);
+        googleBtn.addEventListener('click', handleGoogleClick);
+      }
     };
 
     const handleLoginClick = (e: Event) => {
@@ -57,6 +62,17 @@ export default function ClientDashboard({ htmlContent }: { htmlContent: string }
       }
     };
 
+    const handleGoogleClick = (e: Event) => {
+      setClickCount((c) => c + 1);
+      const fnExists = typeof (window as any).signInWithGoogle === 'function';
+      if (!fnExists) {
+        e.preventDefault();
+        setDiagnosticStatus(`Google Click fired! Error: window.signInWithGoogle is undefined.`);
+      } else {
+        setDiagnosticStatus(`Google Click fired! Executing window.signInWithGoogle()...`);
+      }
+    };
+
     bindLoginButton();
     const interval = setInterval(bindLoginButton, 1000);
 
@@ -66,6 +82,10 @@ export default function ClientDashboard({ htmlContent }: { htmlContent: string }
       const loginBtn = containerRef.current?.querySelector('#loginBtn');
       if (loginBtn) {
         loginBtn.removeEventListener('click', handleLoginClick);
+      }
+      const googleBtn = containerRef.current?.querySelector('#googleLoginBtn');
+      if (googleBtn) {
+        googleBtn.removeEventListener('click', handleGoogleClick);
       }
     };
   }, [htmlContent]);

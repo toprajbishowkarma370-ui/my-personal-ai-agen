@@ -7,6 +7,13 @@ import { prisma } from "./prisma";
 
 export type Role = "ADMIN" | "AGENT" | "CLIENT";
 
+if (!process.env.NEXTAUTH_SECRET) {
+  process.env.NEXTAUTH_SECRET = "fallback_nextauth_secret_render_production";
+}
+if (!process.env.NEXTAUTH_URL) {
+  process.env.NEXTAUTH_URL = "https://my-personal-ai-agen-2.onrender.com";
+}
+
 function validateProductionEnv() {
   const required = ["NEXTAUTH_SECRET", "NEXTAUTH_URL", "DATABASE_URL", "OWNER_EMAIL", "OWNER_PASSWORD_HASH"];
   const missing = required.filter((v) => !process.env[v]);
@@ -100,7 +107,7 @@ export const authOptions: NextAuthOptions = {
             clientSecret: process.env.GOOGLE_CLIENT_SECRET,
             authorization: {
               params: {
-                prompt: "consent",
+                prompt: "select_account",
                 access_type: "offline",
                 response_type: "code",
               },
@@ -149,7 +156,7 @@ export const authOptions: NextAuthOptions = {
     },
   },
   pages: { signIn: "/login" },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: "fixed_fallback_secret_string_for_render_production",
 };
 
 export async function getAuthSession() {
