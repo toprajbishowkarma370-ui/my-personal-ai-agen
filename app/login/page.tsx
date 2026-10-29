@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,17 +12,20 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const callbackUrl = "/";
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const errParam = params.get("error");
-    if (errParam) {
-      if (errParam === "AccessDenied" || errParam === "Forbidden") {
-        setError("Access Denied: Owner ADMIN role required.");
-      } else {
-        setError(`Authentication error: ${errParam}`);
-      }
+    if (!errParam || error) return;
+    if (errParam === "AccessDenied" || errParam === "Forbidden" || errParam === "OAuthCallbackError") {
+      setError("Access Denied: Owner ADMIN role required.");
+    } else if (errParam === "OAuthNotConfigured") {
+      setError("Google OAuth is not configured on the server. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Render environment variables.");
+    } else {
+      setError(`Authentication error: ${errParam}`);
     }
-  }, []);
+  }, [error]);
 
   async function handleCredentialsLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -33,36 +37,25 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const csrfRes = await fetch('/api/auth/csrf', { credentials: 'include' });
-      if (!csrfRes.ok) throw new Error("CSRF fetch failed");
-      const csrfData = await csrfRes.json();
-      const csrfToken = csrfData.csrfToken;
-
-      const formData = new URLSearchParams();
-      formData.append('email', email);
-      formData.append('password', password);
-      formData.append('csrfToken', csrfToken);
-      formData.append('json', 'true');
-
-      const res = await fetch('/api/auth/callback/credentials', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json'
-        },
-        credentials: 'include',
-        body: formData.toString()
+      // NextAuth v4 supported client API: establishes a REAL session cookie.
+      const result = await signIn("credentials", {
+        email,
+        password,
+        callbackUrl,
+        redirect: false,
       });
 
-      const data = await res.json().catch(() => ({}));
-
-      if (res.ok && !data.error && data.status !== 401) {
-        localStorage.setItem('owner_session_active', 'true');
-        window.location.href = '/';
-      } else {
-        const errorMsg = data.error || (res.status === 401 ? 'Invalid Owner Email or Password.' : `Authentication failed (${res.status}). Please check credentials.`);
-        setError("Sign in error: " + errorMsg);
+      if (result?.error) {
+        setError(result.status === 401 ? "Invalid Owner Email or Password." : "Sign in failed: " + result.error);
+        return;
       }
+
+      // Keep the legacy static dashboard's auth wall in sync now that a real NextAuth
+      // session cookie exists.
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("owner_session_active", "true");
+      }
+      router.push(callbackUrl);
     } catch (err: any) {
       setError("Sign in error: " + (err?.message || "Network error connecting to NextAuth API."));
     } finally {
@@ -72,41 +65,52 @@ export default function LoginPage() {
 
   async function handleGoogleLogin() {
     setError("");
+    setLoading(true);
     try {
-      const csrfRes = await fetch('/api/auth/csrf', { credentials: 'include' });
-      if (!csrfRes.ok) throw new Error("CSRF fetch failed");
-      const csrfData = await csrfRes.json();
-      const csrfToken = csrfData.csrfToken;
-      if (!csrfToken) throw new Error("CSRF token missing");
-
-      const formData = new URLSearchParams();
-      formData.append('csrfToken', csrfToken);
-      formData.append('json', 'true');
-
-      const res = await fetch('/api/auth/signin/google', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json'
-        },
-        credentials: 'include',
-        body: formData.toString()
+      // Google OAuth via the supported NextAuth client API. Surfaces a clear error when
+      // the Google provider is not configured on the server.
+      const result = await signIn("google", {
+        callbackUrl,
+        redirect: false,
       });
 
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.url) {
-        window.location.href = data.url;
-      } else {
-        throw new Error(data.error || "Failed to initiate Google sign-in");
+      if (result?.error) {
+        const msg = String(result.error || "");
+        if (
+          msg.includes("OAuth not configured") ||
+          msg.includes("Provider") ||
+          msg.includes("oauth") ||
+          result.status === 401
+        ) {
+          if (result.status === 401 && !msg.includes("configured")) {
+            setError("Access Denied: Owner ADMIN role required. Only the configured OWNER_EMAIL may sign in with Google.");
+          } else {
+            setError("Google OAuth is not configured on the server. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Render environment variables.");
+          }
+        } else if (result.status === 401) {
+          setError("Access Denied: Owner ADMIN role required. Only the configured OWNER_EMAIL may sign in with Google.");
+        } else {
+          setError("Google sign-in failed: " + msg);
+        }
+        return;
       }
+
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("owner_session_active", "true");
+      }
+      router.push(callbackUrl);
     } catch (err: any) {
       setError(`Google sign-in error: ${err?.message || "Unable to initiate Google OAuth"}`);
+    } finally {
+      setLoading(false);
     }
   }
 
   function handleDemoLogin() {
-    localStorage.setItem('owner_session_active', 'true');
-    window.location.href = '/';
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("owner_session_active", "true");
+    }
+    router.push(callbackUrl);
   }
 
   return (
@@ -179,6 +183,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={handleGoogleLogin}
+            disabled={loading}
             className="w-full py-3 bg-white hover:bg-slate-100 text-slate-900 rounded-xl text-sm font-bold flex items-center justify-center gap-2.5 transition shadow"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -202,8 +207,7 @@ export default function LoginPage() {
         </div>
 
         <div className="mt-4 p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-400 text-center">
-          Configured production ENV status:<br />
-          <span className="text-emerald-400">✓ NEXTAUTH_SECRET • NEXTAUTH_URL • DATABASE_URL • OWNER_EMAIL</span>
+          NextAuth session via <code className="text-slate-300">signIn()</code> from next-auth/react.
         </div>
       </div>
     </div>
