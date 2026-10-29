@@ -5,31 +5,73 @@ import { logAction } from "@/lib/audit";
 
 export const runtime = "nodejs";
 
+// eSewa gateway callback (GET). eSewa redirects the customer's browser here after payment.
+// This endpoint MUST NOT require a browser session (NextAuth cookie) because the callback
+// originates from eSewa's servers, not an authenticated user session.
+// It records the gateway callback as a PENDING payment and requires explicit owner
+// verification via POST /api/payments/verify before any invoice is marked PAID.
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const dataEncoded = url.searchParams.get("data"); // eSewa v2 base64 response or query params
-
-    if (!dataEncoded) {
-      return NextResponse.redirect(new URL("/dashboard?payment=error&reason=missing_data", req.url));
-    }
+    const dataEncoded = url.searchParams.get("data");
 
     let decodedData: any = {};
-    try {
-      decodedData = JSON.parse(Buffer.from(dataEncoded, "base64").toString("utf-8"));
-    } catch (e) {
+    if (dataEncoded) {
+      try {
+        decodedData = JSON.parse(Buffer.from(dataEncoded, "base64").toString("utf-8"));
+      } catch (e) {
+        decodedData = Object.fromEntries(url.searchParams.entries());
+      }
+    } else {
       decodedData = Object.fromEntries(url.searchParams.entries());
     }
 
     const { transaction_uuid, total_amount, transaction_code, status } = decodedData;
 
-    if (status === "COMPLETE" || decodedData.status === "SUCCESS") {
-      // Find invoice by invoiceNumber or transaction uuid
-      await logAction("esewa.verify.success", JSON.stringify({ transaction_uuid, transaction_code, total_amount }));
-      return NextResponse.redirect(new URL("/dashboard?payment=success", req.url));
+    // Locate the invoice from the transaction uuid (format: TXN-<invoiceNumber>-<ts>)
+    let invoice = null;
+    if (transaction_uuid) {
+      const invoiceNumber = String(transaction_uuid).split("-")[1];
+      if (invoiceNumber) {
+        invoice = await prisma.invoice.findFirst({ where: { invoiceNumber } });
+      }
     }
 
-    return NextResponse.redirect(new URL("/dashboard?payment=failed", req.url));
+    if (!invoice) {
+      return NextResponse.redirect(new URL("/dashboard?payment=error&reason=invoice_not_found", req.url));
+    }
+
+    // Check whether a payment for this transaction already exists (idempotency)
+    const existing = transaction_uuid
+      ? await prisma.payment.findFirst({ where: { transactionId: transaction_uuid } })
+      : null;
+
+    if (existing) {
+      return NextResponse.redirect(new URL(`/dashboard?payment=received&id=${existing.id}&status=PENDING`, req.url));
+    }
+
+    const amount = Number(total_amount) || invoice.total;
+
+    // Record the gateway callback as PENDING. Owner must explicitly verify via
+    // POST /api/payments/verify before the invoice is marked PAID. Never auto-mark PAID.
+    const payment = await prisma.payment.create({
+      data: {
+        invoiceId: invoice.id,
+        amount,
+        currency: "NPR",
+        method: "ESEWA",
+        status: "PENDING",
+        transactionId: transaction_uuid || null,
+        referenceNumber: transaction_code || null,
+        evidenceMetadata: JSON.stringify({ gateway: "esewa", status, total_amount, transaction_code, transaction_uuid }),
+      },
+    });
+
+    await logAction("esewa.callback", JSON.stringify({ paymentId: payment.id, invoiceId: invoice.id, transaction_uuid, status, amount }));
+
+    return NextResponse.redirect(
+      new URL(`/dashboard?payment=received&id=${payment.id}&status=PENDING&msg=Payment+received+pending+owner+verification`, req.url)
+    );
   } catch (err: any) {
     console.error("eSewa verify error", err);
     return NextResponse.redirect(new URL("/dashboard?payment=error", req.url));
