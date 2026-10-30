@@ -94,3 +94,41 @@ test("Login-loop prevention: real NextAuth session via signIn (not localStorage 
   assert.ok(login.includes('signIn("credentials"'), 'login establishes real session via signIn');
   assert.ok(login.includes('signIn("google"'), 'google establishes real session via signIn');
 });
+
+test("signIn uses redirect: false to prevent internal navigation and redirect loop", () => {
+  const login = read(LOGIN_PAGE);
+  // credentials signIn must not let NextAuth navigate internally
+  const credentialsBlock = login.slice(
+    login.indexOf('signIn("credentials"'),
+    login.indexOf('if (result?.error)', login.indexOf('signIn("credentials"'))
+  );
+  assert.ok(credentialsBlock.includes("redirect: false"), 'credentials signIn must use redirect: false');
+  // google signIn must not let NextAuth navigate internally
+  const googleBlock = login.slice(
+    login.indexOf('signIn("google"'),
+    login.indexOf('if (result?.error)', login.indexOf('signIn("google"'))
+  );
+  assert.ok(googleBlock.includes("redirect: false"), 'google signIn must use redirect: false');
+});
+
+test("Login success navigates to callbackUrl (controlled by login page, not NextAuth)", () => {
+  const login = read(LOGIN_PAGE);
+  assert.ok(login.includes("window.location.href = callbackUrl"), 'login page navigates to callbackUrl on success');
+  // The navigation happens after signIn resolves, not inside NextAuth
+  assert.ok(
+    login.includes("window.location.href = callbackUrl") &&
+    !login.includes("router.push(callbackUrl)"),
+    'navigation uses window.location.href, not router.push'
+  );
+});
+
+test("Login error does not navigate away from /login", () => {
+  const login = read(LOGIN_PAGE);
+  const credentialsBlock = login.slice(
+    login.indexOf('signIn("credentials"'),
+    login.indexOf('} catch (err', login.indexOf('signIn("credentials"'))
+  );
+  // On error result, the block returns before any navigation
+  assert.ok(credentialsBlock.includes("return;"), 'error path returns before navigation');
+});
+
