@@ -102,13 +102,42 @@ export const authOptions: NextAuthOptions = {
         ]
       : []),
   ],
-  // Use NextAuth v4 native cookie handling for better compatibility in production
+  // Configure cookies for production proxy environments
+  cookies: {
+    sessionToken: {
+      name: process.env.NODE_ENV === "production" ? "__Secure-next-auth.session-token" : "next-auth.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+    callbackUrl: {
+      name: process.env.NODE_ENV === "production" ? "__Secure-next-auth.callback-url" : "next-auth.callback-url",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+    csrfToken: {
+      name: process.env.NODE_ENV === "production" ? "__Host-next-auth.csrf-token" : "next-auth.csrf-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+  },
   callbacks: {
     async signIn({ user, account, profile }) {
       if (account?.provider === "google") {
         const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
         const userEmail = user.email?.trim().toLowerCase();
-        const isVerified = (profile as any)?.email_verified === true || (user as any)?.emailVerified;
+        const isVerified = (profile as any)?.email_verified === true || (profile as any)?.verified_email === true || (user as any)?.emailVerified;
 
         if (!isVerified) {
           return false;
@@ -118,6 +147,7 @@ export const authOptions: NextAuthOptions = {
           (user as any).role = "ADMIN";
           return true;
         }
+        console.error("Google sign-in rejected: user email does not match OWNER_EMAIL");
         return false;
       }
       return true;
