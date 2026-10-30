@@ -102,26 +102,7 @@ export const authOptions: NextAuthOptions = {
         ]
       : []),
   ],
-  cookies: {
-    sessionToken: {
-      name: "next-auth.session-token",
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: isProduction(),
-      },
-    },
-    csrfToken: {
-      name: "next-auth.csrf-token",
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: isProduction(),
-      },
-    },
-  },
+  // Use NextAuth v4 native cookie handling for better compatibility in production
   callbacks: {
     async signIn({ user, account, profile }) {
       if (account?.provider === "google") {
@@ -141,10 +122,13 @@ export const authOptions: NextAuthOptions = {
       }
       return true;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id;
         token.role = (user as any).role || "ADMIN";
+      }
+      if (account?.provider === "google") {
+        token.provider = account.provider;
       }
       return token;
     },
@@ -152,6 +136,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as any).id = token.id;
         (session.user as any).role = token.role || "ADMIN";
+        (session.user as any).provider = token.provider;
       }
       return session;
     },

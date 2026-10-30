@@ -98,6 +98,12 @@ export default function LoginPage() {
         return;
       }
 
+      // For OAuth providers with redirect:false, NextAuth returns the authorization URL
+      if (result?.url) {
+        window.location.href = result.url;
+        return;
+      }
+
       if (typeof localStorage !== "undefined") {
         localStorage.setItem("owner_session_active", "true");
       }
