@@ -105,21 +105,24 @@ export const authOptions: NextAuthOptions = {
   // Use default NextAuth cookies
   callbacks: {
     async signIn({ user, account, profile }) {
-      console.log('[NEXTAUTH] signIn callback provider:', account?.provider, 'email:', user?.email, 'verified:', (profile as any)?.email_verified);
+      console.log('[NEXTAUTH] signIn callback provider:', account?.provider, 'email:', user?.email);
       if (account?.provider === "google") {
         const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
         const userEmail = user.email?.trim().toLowerCase();
         const isVerified = (profile as any)?.email_verified === true || (profile as any)?.verified_email === true;
 
-        console.log('[NEXTAUTH] Google ownerEmail:', ownerEmail, 'userEmail:', userEmail, 'verified:', isVerified);
+        console.log('[NEXTAUTH] Google ownerEmail:', !!ownerEmail, 'userEmail:', !!userEmail, 'verified:', isVerified);
         if (!ownerEmail) {
-          return "/login?error=OAuthNotConfigured";
+          console.error('[NEXTAUTH] OWNER_EMAIL not configured');
+          return false;
         }
-        if (!isVerified) {
-          return "/login?error=AccessDenied";
+        if (!isVerified || !userEmail) {
+          console.error('[NEXTAUTH] Google email not verified');
+          return false;
         }
         if (userEmail !== ownerEmail) {
-          return "/login?error=AccessDenied";
+          console.error('[NEXTAUTH] Google email does not match OWNER_EMAIL');
+          return false;
         }
         (user as any).role = "ADMIN";
         return true;
