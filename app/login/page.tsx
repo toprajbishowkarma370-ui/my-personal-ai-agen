@@ -1,11 +1,9 @@
 "use client";
 
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -38,11 +36,13 @@ export default function LoginPage() {
 
     try {
       // NextAuth v4 supported client API: establishes a REAL session cookie.
+      // redirect defaults to true so signIn returns { ok, url } without navigating
+      // internally; we then set localStorage and do a full-page reload to "/" so the
+      // dashboard's DOMContentLoaded auth-wall check re-runs and hides the wall.
       const result = await signIn("credentials", {
         email,
         password,
         callbackUrl,
-        redirect: false,
       });
 
       if (result?.error) {
@@ -51,11 +51,12 @@ export default function LoginPage() {
       }
 
       // Keep the legacy static dashboard's auth wall in sync now that a real NextAuth
-      // session cookie exists.
+      // session cookie exists. Full-page reload so DOMContentLoaded re-evaluates the
+      // localStorage-owned auth wall and boots the app.
       if (typeof localStorage !== "undefined") {
         localStorage.setItem("owner_session_active", "true");
       }
-      router.push(callbackUrl);
+      window.location.href = callbackUrl;
     } catch (err: any) {
       setError("Sign in error: " + (err?.message || "Network error connecting to NextAuth API."));
     } finally {
@@ -98,7 +99,7 @@ export default function LoginPage() {
       if (typeof localStorage !== "undefined") {
         localStorage.setItem("owner_session_active", "true");
       }
-      router.push(callbackUrl);
+      window.location.href = callbackUrl;
     } catch (err: any) {
       setError(`Google sign-in error: ${err?.message || "Unable to initiate Google OAuth"}`);
     } finally {
@@ -110,7 +111,7 @@ export default function LoginPage() {
     if (typeof localStorage !== "undefined") {
       localStorage.setItem("owner_session_active", "true");
     }
-    router.push(callbackUrl);
+    window.location.href = callbackUrl;
   }
 
   return (

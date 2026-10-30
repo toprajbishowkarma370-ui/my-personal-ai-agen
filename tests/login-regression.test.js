@@ -43,7 +43,7 @@ test("ClientDashboard no longer blocks navigation on undefined window global", (
 
 test("Login result handling: success establishes session and redirects to /", () => {
   const src = read(LOGIN_PAGE);
-  assert.ok(src.includes('router.push(callbackUrl)'), 'success redirects to /');
+  assert.ok(src.includes('window.location.href = callbackUrl'), 'success redirects to / via full-page navigation');
   assert.ok(src.includes("localStorage.setItem('owner_session_active', 'true')") || src.includes('localStorage.setItem("owner_session_active",'), 'session persistence flag set');
   assert.ok(src.includes('result?.error'), 'signIn result inspected for error');
 });
@@ -56,9 +56,9 @@ test("Login result handling: 401 / invalid owner rejected without establishing s
     src.includes('Access Denied: Owner ADMIN role required'),
     'unauthorized rejection message present'
   );
-  // On error result, must NOT router.push
-  const pushCount = (src.match(/router\.push\(callbackUrl\)/g) || []).length;
-  assert.ok(pushCount >= 2, 'router.push on both success paths (credentials + google)');
+  // On error result, must NOT navigate
+  const hrefCount = (src.match(/window\.location\.href = callbackUrl/g) || []).length;
+  assert.ok(hrefCount >= 2, 'navigation on both success paths (credentials + google)');
 });
 
 test("Missing Google OAuth configuration shows a useful server-side error", () => {

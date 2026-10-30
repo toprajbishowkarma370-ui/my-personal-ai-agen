@@ -1,4 +1,15 @@
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
+import { redirect } from 'next/navigation';
+
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    redirect('/login');
+  }
+  if ((session as any)?.user?.role !== 'ADMIN') {
+    redirect('/login?error=AccessDenied');
+  }
   return (
     <div className="min-h-screen bg-[#070a14] text-slate-100">
       <nav className="border-b border-slate-800 bg-[#0b0f1f] sticky top-0 z-20">

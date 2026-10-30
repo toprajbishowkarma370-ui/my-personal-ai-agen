@@ -50,8 +50,12 @@ export const authOptions: NextAuthOptions = {
         const ownerHash = process.env.OWNER_PASSWORD_HASH?.trim();
 
         if (ownerEmail && ownerHash && email === ownerEmail) {
-          const ok = await bcrypt.compare(credentials.password, ownerHash);
-
+          let ok = false;
+          try {
+            ok = await bcrypt.compare(credentials.password, ownerHash);
+          } catch {
+            ok = false;
+          }
           if (ok) {
             return {
               id: "owner_admin_01",
