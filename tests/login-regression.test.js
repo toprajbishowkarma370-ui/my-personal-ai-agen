@@ -21,7 +21,14 @@ test("Login page imports signIn from next-auth/react (real session API)", () => 
   );
   assert.ok(src.includes('signIn("credentials"'), 'credentials signIn handler present');
   assert.ok(src.includes('signIn("google"'), 'Google signIn handler present');
-  assert.ok(src.includes("redirect: false"), 'signIn used with redirect:false to inspect result');
+  assert.ok(
+    login.slice(login.indexOf('signIn("credentials"'), login.indexOf('if (result?.error)', login.indexOf('signIn("credentials"'))).includes("redirect: false"),
+    'credentials signIn must use redirect: false'
+  );
+  assert.ok(
+    login.slice(login.indexOf('signIn("google"'), login.indexOf('if (result?.error)', login.indexOf('signIn("google"'))).includes("redirect: false"),
+    'google signIn must use redirect: false'
+  );
 });
 
 test("No active reference to undefined window.signInWithGoogle in login flow", () => {
@@ -93,4 +100,37 @@ test("Login-loop prevention: real NextAuth session via signIn (not localStorage 
   // login page uses signIn (sets cookie) rather than only localStorage mirror.
   assert.ok(login.includes('signIn("credentials"'), 'login establishes real session via signIn');
   assert.ok(login.includes('signIn("google"'), 'google establishes real session via signIn');
+});
+
+test("signIn uses redirect: false to prevent internal navigation and redirect loop", () => {
+  const login = read(LOGIN_PAGE);
+  const credentialsBlock = login.slice(
+    login.indexOf('signIn("credentials"'),
+    login.indexOf('if (result?.error)', login.indexOf('signIn("credentials"'))
+  );
+  assert.ok(credentialsBlock.includes("redirect: false"), 'credentials signIn must use redirect: false');
+  const googleBlock = login.slice(
+    login.indexOf('signIn("google"'),
+    login.indexOf('if (result?.error)', login.indexOf('signIn("google"'))
+  );
+  assert.ok(googleBlock.includes("redirect: false"), 'google signIn must use redirect: false');
+});
+
+test("Login success navigates to callbackUrl (controlled by login page, not NextAuth)", () => {
+  const login = read(LOGIN_PAGE);
+  assert.ok(login.includes("window.location.href = callbackUrl"), 'login page navigates to callbackUrl on success');
+  assert.ok(
+    login.includes("window.location.href = callbackUrl") &&
+    !login.includes("router.push(callbackUrl)"),
+    'navigation uses window.location.href, not router.push'
+  );
+});
+
+test("Login error does not navigate away from /login", () => {
+  const login = read(LOGIN_PAGE);
+  const credentialsBlock = login.slice(
+    login.indexOf('signIn("credentials"'),
+    login.indexOf('} catch (err', login.indexOf('signIn("credentials"'))
+  );
+  assert.ok(credentialsBlock.includes("return;"), 'error path returns before navigation');
 });
