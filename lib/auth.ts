@@ -102,6 +102,26 @@ export const authOptions: NextAuthOptions = {
         ]
       : []),
   ],
+  cookies: {
+    sessionToken: {
+      name: "next-auth.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: isProduction(),
+      },
+    },
+    csrfToken: {
+      name: "next-auth.csrf-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: isProduction(),
+      },
+    },
+  },
   callbacks: {
     async signIn({ user, account, profile }) {
       if (account?.provider === "google") {

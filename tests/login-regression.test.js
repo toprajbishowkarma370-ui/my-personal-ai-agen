@@ -94,3 +94,21 @@ test("Login-loop prevention: real NextAuth session via signIn (not localStorage 
   assert.ok(login.includes('signIn("credentials"'), 'login establishes real session via signIn');
   assert.ok(login.includes('signIn("google"'), 'google establishes real session via signIn');
 });
+
+test("Credentials signIn uses redirect:false so session is confirmed before navigating (prevents login bounce)", () => {
+  const src = read(LOGIN_PAGE);
+  // The credentials signIn must explicitly set redirect:false so we only navigate
+  // to / after confirming the session cookie was established.
+  const credsBlock = src.slice(src.indexOf('signIn("credentials"'), src.indexOf('handleGoogleLogin'));
+  assert.ok(credsBlock.includes("redirect: false"), 'credentials signIn must use redirect:false');
+  // On success, navigate to callbackUrl only after result.error is absent.
+  assert.ok(src.includes('if (result?.error)'), 'signIn result inspected before navigating');
+  assert.ok(src.includes('window.location.href = callbackUrl'), 'navigates to callbackUrl on success');
+});
+
+test("Auth cookie config sets secure flag in production for Render HTTPS", () => {
+  const src = read("./lib/auth.ts");
+  assert.ok(src.includes("secure: isProduction()"), 'session cookie secure flag tied to production');
+  assert.ok(src.includes('path: "/"'), 'session cookie path covers root');
+  assert.ok(src.includes("httpOnly: true"), 'session cookie is httpOnly');
+});

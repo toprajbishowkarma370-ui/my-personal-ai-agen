@@ -36,13 +36,15 @@ export default function LoginPage() {
 
     try {
       // NextAuth v4 supported client API: establishes a REAL session cookie.
-      // redirect defaults to true so signIn returns { ok, url } without navigating
-      // internally; we then set localStorage and do a full-page reload to "/" so the
-      // dashboard's DOMContentLoaded auth-wall check re-runs and hides the wall.
+      // redirect: false so we explicitly confirm the session cookie was set before
+      // navigating; with redirect: true signIn navigates internally and can race
+      // with cookie commit behind proxies, causing the session to be lost and the
+      // browser to bounce back to /login.
       const result = await signIn("credentials", {
         email,
         password,
         callbackUrl,
+        redirect: false,
       });
 
       if (result?.error) {
