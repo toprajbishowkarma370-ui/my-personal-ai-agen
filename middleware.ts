@@ -5,6 +5,7 @@ export default withAuth(
   function middleware(req) {
     const token = req.nextauth.token;
     const pathname = req.nextUrl.pathname;
+    console.log('[MW]', pathname, 'hasToken:', !!token, 'role:', token?.role);
     if ((pathname.startsWith("/dashboard") || pathname.startsWith("/admin")) && token?.role !== "ADMIN") {
       return NextResponse.redirect(new URL("/login?error=Forbidden", req.url));
     }
@@ -17,6 +18,7 @@ export default withAuth(
     callbacks: {
       authorized: ({ token, req }) => {
         const p = req.nextUrl.pathname;
+        console.log('[MW-AUTH]', p, 'token:', !!token);
         if (p === "/login" || p === "/" || p.startsWith("/api/auth") || p.startsWith("/api/webhooks") || p.startsWith("/chat") || p.startsWith("/api/chat-public") || p.startsWith("/api/health")) {
           return true;
         }

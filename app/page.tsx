@@ -9,8 +9,13 @@ export const dynamic = 'force-dynamic';
 
 export default async function Page() {
   const session = await getServerSession(authOptions);
+  console.log('[ROOT] session exists:', !!session, 'role:', (session as any)?.user?.role, 'email:', (session as any)?.user?.email);
   if (!session) {
     redirect('/login');
+  }
+  const role = (session as any)?.user?.role;
+  if (role !== 'ADMIN') {
+    redirect('/login?error=AccessDenied');
   }
 
   const pathsToTry = [

@@ -105,11 +105,13 @@ export const authOptions: NextAuthOptions = {
   // Use default NextAuth cookies
   callbacks: {
     async signIn({ user, account, profile }) {
+      console.log('[NEXTAUTH] signIn callback provider:', account?.provider, 'email:', user?.email, 'verified:', (profile as any)?.email_verified);
       if (account?.provider === "google") {
         const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
         const userEmail = user.email?.trim().toLowerCase();
         const isVerified = (profile as any)?.email_verified === true || (profile as any)?.verified_email === true;
 
+        console.log('[NEXTAUTH] Google ownerEmail:', ownerEmail, 'userEmail:', userEmail, 'verified:', isVerified);
         if (!ownerEmail) {
           return "/login?error=OAuthNotConfigured";
         }
@@ -125,6 +127,7 @@ export const authOptions: NextAuthOptions = {
       return true;
     },
     async jwt({ token, user }) {
+      console.log('[NEXTAUTH] jwt callback user:', !!user, 'token.role:', token.role);
       if (user) {
         token.id = user.id;
         token.role = (user as any).role || "ADMIN";
@@ -133,6 +136,7 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
+      console.log('[NEXTAUTH] session callback role:', token.role);
       if (session.user) {
         (session.user as any).id = token.id;
         (session.user as any).role = token.role || "ADMIN";
