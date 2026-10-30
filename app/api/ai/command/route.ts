@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/auth";
-import { executeGeminiPrompt } from "@/lib/gemini";
+import { executeAiPrompt, aiRequiresConfiguration, getConfiguredProviderLabel } from "@/lib/ai-provider";
 import { logAction } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -26,24 +26,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Prompt is required" }, { status: 400 });
     }
 
+    if (aiRequiresConfiguration()) {
+      return NextResponse.json({ 
+        success: false, 
+        error: "No AI provider is configured on the server. Set OPENAI_API_KEY (recommended) or GEMINI_API_KEY in Render Environment variables to enable live AI generation.",
+        needsApiKey: true
+      }, { status: 400 });
+    }
+
     try {
-      const resultText = await executeGeminiPrompt(
+      const provider = getConfiguredProviderLabel();
+      const resultText = await executeAiPrompt(
         prompt, 
         systemContext || "You are My Personal AI Business Agent for Chaurjahari & Karnali, expert in agency operations, lead generation, and software delivery."
       );
-      await logAction("ai.command", JSON.stringify({ prompt: String(prompt).substring(0, 50) }));
+      await logAction("ai.command", JSON.stringify({ provider, prompt: String(prompt).substring(0, 50) }));
 
-      return NextResponse.json({ success: true, result: resultText });
+      return NextResponse.json({ success: true, result: resultText, provider });
     } catch (aiErr: any) {
-      console.error("[AI] Gemini execution error:", aiErr?.message);
-      const errorMessage = aiErr?.message?.includes("NEEDS_AUTHORIZATION")
-        ? "Gemini API Key is not configured on Render. Please add GEMINI_API_KEY in Render Environment variables to enable live AI generation."
-        : `AI Generation Error: ${aiErr?.message || "Upstream provider error"}`;
-      
+      console.error("[AI] AI execution error:", aiErr?.message);
+      const needsKey = aiErr?.message?.includes("NEEDS_AUTHORIZATION");
       return NextResponse.json({ 
         success: false, 
-        error: errorMessage,
-        needsApiKey: aiErr?.message?.includes("NEEDS_AUTHORIZATION")
+        error: needsKey ? "AI provider is not configured on Render. Add OPENAI_API_KEY or GEMINI_API_KEY to enable live AI generation." : `AI Generation Error: ${aiErr?.message || "Upstream provider error"}`,
+        needsApiKey: needsKey
       }, { status: 400 });
     }
   } catch (err: any) {

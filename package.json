@@ -8,7 +8,12 @@
     "start": "next start",
     "type-check": "tsc --noEmit",
     "hash-password": "node scripts/hash-password.js",
-    "test": "NODE_ENV=test node --test"
+    "test": "NODE_ENV=test node --test",
+    "db:seed": "node prisma/seed.js",
+    "db:push": "prisma db push"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
