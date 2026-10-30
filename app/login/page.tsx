@@ -70,37 +70,10 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const result = await signIn("google", {
-        callbackUrl,
-        redirect: false,
-      });
-
-      if (result?.error) {
-        const msg = String(result.error || "");
-        if (msg.includes("AccessDenied") || msg.includes("Access Denied") || result.status === 401) {
-          setError("Access Denied: Owner ADMIN role required. Only the configured OWNER_EMAIL may sign in with Google.");
-          return;
-        }
-        if (msg.includes("OAuthNotConfigured") || msg.includes("not configured")) {
-          setError("Google OAuth is not configured on the server. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Render environment variables.");
-          return;
-        }
-        setError("Google sign-in failed: " + msg);
-        return;
-      }
-
-      if (result?.url) {
-        window.location.href = result.url;
-        return;
-      }
-
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem("owner_session_active", "true");
-      }
-      window.location.href = callbackUrl;
+      signIn("google", { callbackUrl: "/" });
+      return;
     } catch (err: any) {
       setError(`Google sign-in error: ${err?.message || "Unable to initiate Google OAuth"}`);
-    } finally {
       setLoading(false);
     }
   }

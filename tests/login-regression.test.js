@@ -21,7 +21,6 @@ test("Login page imports signIn from next-auth/react (real session API)", () => 
   );
   assert.ok(src.includes('signIn("credentials"'), 'credentials signIn handler present');
   assert.ok(src.includes('signIn("google"'), 'Google signIn handler present');
-  assert.ok(src.includes("redirect: false"), 'signIn used with redirect:false to inspect result');
 });
 
 test("No active reference to undefined window.signInWithGoogle in login flow", () => {
