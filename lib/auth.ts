@@ -102,42 +102,25 @@ export const authOptions: NextAuthOptions = {
         ]
       : []),
   ],
-  cookies: {
-    sessionToken: {
-      name: "next-auth.session-token",
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: isProduction(),
-      },
-    },
-    csrfToken: {
-      name: "next-auth.csrf-token",
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: isProduction(),
-      },
-    },
-  },
+  // Use default NextAuth cookies
   callbacks: {
     async signIn({ user, account, profile }) {
       if (account?.provider === "google") {
         const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
         const userEmail = user.email?.trim().toLowerCase();
-        const isVerified = (profile as any)?.email_verified === true || (user as any)?.emailVerified;
+        const isVerified = (profile as any)?.email_verified === true || (profile as any)?.verified_email === true;
 
+        if (!ownerEmail) {
+          return "/login?error=OAuthNotConfigured";
+        }
         if (!isVerified) {
-          return false;
+          return "/login?error=AccessDenied";
         }
-
-        if (ownerEmail && userEmail === ownerEmail) {
-          (user as any).role = "ADMIN";
-          return true;
+        if (userEmail !== ownerEmail) {
+          return "/login?error=AccessDenied";
         }
-        return false;
+        (user as any).role = "ADMIN";
+        return true;
       }
       return true;
     },
@@ -145,6 +128,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.role = (user as any).role || "ADMIN";
+        token.email = user.email;
       }
       return token;
     },
@@ -152,6 +136,9 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as any).id = token.id;
         (session.user as any).role = token.role || "ADMIN";
+        if (token.email) {
+          session.user.email = token.email as string;
+        }
       }
       return session;
     },
