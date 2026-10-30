@@ -1546,6 +1546,8 @@ async function doLogin(demo = false) {
 }
 function doLogout() {
   localStorage.removeItem('owner_session_active');
+  // Invalidate the real NextAuth session cookie via the signout endpoint.
+  fetch('/api/auth/signout', { method: 'POST', credentials: 'include' }).catch(() => {});
   location.reload();
 }
 function togglePasswordVisibility() {

@@ -7,8 +7,8 @@ import ClientDashboard from '@/components/ClientDashboard';
 
 export const dynamic = 'force-dynamic';
 
-export default function Page() {
-  const session = getServerSession(authOptions);
+export default async function Page() {
+  const session = await getServerSession(authOptions);
   if (!session) {
     redirect('/login');
   }
