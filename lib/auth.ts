@@ -102,12 +102,42 @@ export const authOptions: NextAuthOptions = {
         ]
       : []),
   ],
+  // Configure cookies for production proxy environments
+  cookies: {
+    sessionToken: {
+      name: process.env.NODE_ENV === "production" ? "__Secure-next-auth.session-token" : "next-auth.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+    callbackUrl: {
+      name: process.env.NODE_ENV === "production" ? "__Secure-next-auth.callback-url" : "next-auth.callback-url",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+    csrfToken: {
+      name: process.env.NODE_ENV === "production" ? "__Host-next-auth.csrf-token" : "next-auth.csrf-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+  },
   callbacks: {
     async signIn({ user, account, profile }) {
       if (account?.provider === "google") {
         const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
         const userEmail = user.email?.trim().toLowerCase();
-        const isVerified = (profile as any)?.email_verified === true || (user as any)?.emailVerified;
+        const isVerified = (profile as any)?.email_verified === true || (profile as any)?.verified_email === true || (user as any)?.emailVerified;
 
         if (!isVerified) {
           return false;
@@ -117,14 +147,18 @@ export const authOptions: NextAuthOptions = {
           (user as any).role = "ADMIN";
           return true;
         }
+        console.error("Google sign-in rejected: user email does not match OWNER_EMAIL");
         return false;
       }
       return true;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id;
         token.role = (user as any).role || "ADMIN";
+      }
+      if (account?.provider === "google") {
+        token.provider = account.provider;
       }
       return token;
     },
@@ -132,6 +166,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as any).id = token.id;
         (session.user as any).role = token.role || "ADMIN";
+        (session.user as any).provider = token.provider;
       }
       return session;
     },
