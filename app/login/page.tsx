@@ -70,8 +70,6 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      // Google OAuth via the supported NextAuth client API. Surfaces a clear error when
-      // the Google provider is not configured on the server.
       const result = await signIn("google", {
         callbackUrl,
         redirect: false,
@@ -79,22 +77,20 @@ export default function LoginPage() {
 
       if (result?.error) {
         const msg = String(result.error || "");
-        if (
-          msg.includes("OAuth not configured") ||
-          msg.includes("Provider") ||
-          msg.includes("oauth") ||
-          result.status === 401
-        ) {
-          if (result.status === 401 && !msg.includes("configured")) {
-            setError("Access Denied: Owner ADMIN role required. Only the configured OWNER_EMAIL may sign in with Google.");
-          } else {
-            setError("Google OAuth is not configured on the server. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Render environment variables.");
-          }
-        } else if (result.status === 401) {
+        if (msg.includes("AccessDenied") || msg.includes("Access Denied") || result.status === 401) {
           setError("Access Denied: Owner ADMIN role required. Only the configured OWNER_EMAIL may sign in with Google.");
-        } else {
-          setError("Google sign-in failed: " + msg);
+          return;
         }
+        if (msg.includes("OAuthNotConfigured") || msg.includes("not configured")) {
+          setError("Google OAuth is not configured on the server. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Render environment variables.");
+          return;
+        }
+        setError("Google sign-in failed: " + msg);
+        return;
+      }
+
+      if (result?.url) {
+        window.location.href = result.url;
         return;
       }
 
