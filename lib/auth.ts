@@ -39,7 +39,12 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         // Fail safely in production: never authenticate when required secrets are absent.
-        validateProductionEnv();
+        // Return null (fail safely) instead of throwing so NextAuth returns a clean
+        // authentication error instead of an unhandled exception.
+        const missing = validateProductionEnv();
+        if (missing.length > 0) {
+          return null;
+        }
 
         if (!credentials?.email || !credentials?.password) {
           return null;
