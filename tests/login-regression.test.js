@@ -132,3 +132,56 @@ test("Login error does not navigate away from /login", () => {
   assert.ok(credentialsBlock.includes("return;"), 'error path returns before navigation');
 });
 
+test("Auth options configure explicit secure session cookies for production", () => {
+  const src = read("./lib/auth.ts");
+  // Production session cookie must use the __Secure prefix and secure flag so the
+  // cookie is set and sent over HTTPS behind Render's TLS proxy. Without this the
+  // session cookie is lost after login and getServerSession() returns null -> loop.
+  assert.ok(
+    src.includes('"__Secure-next-auth.session-token"'),
+    'production sessionToken uses __Secure-next-auth.session-token'
+  );
+  assert.ok(
+    src.includes('secure: isProduction()'),
+    'session cookie secure flag is production-gated'
+  );
+  assert.ok(
+    src.includes('path: "/"'),
+    'session cookie path is root so it is sent to / and /login'
+  );
+});
+
+test("Redirect-loop scenario: successful login establishes a session that the root route recognizes", () => {
+  const auth = read("./lib/auth.ts");
+  const login = read(LOGIN_PAGE);
+  const page = read("./app/page.tsx");
+
+  // 1. The login page establishes a real NextAuth session via signIn (sets cookie)
+  assert.ok(login.includes('signIn("credentials"'), 'login establishes real session via signIn');
+  assert.ok(login.includes("redirect: false"), 'signIn uses redirect:false to inspect result before navigating');
+
+  // 2. The login page navigates to the root after success (not back to /login)
+  assert.ok(login.includes("window.location.href = callbackUrl"), 'login navigates to callbackUrl on success');
+
+  // 3. The root route gates on getServerSession and redirects unauthenticated users to /login
+  assert.ok(page.includes("getServerSession(authOptions)"), 'root route reads server session');
+  assert.ok(page.includes("redirect('/login')"), 'root route redirects to /login when no session');
+
+  // 4. Auth options configure cookies so the session survives the redirect to / in production
+  assert.ok(auth.includes('"__Secure-next-auth.session-token"'), 'production session cookie configured');
+});
+
+test("Authenticated ADMIN can access dashboard; unauthenticated users cannot", () => {
+  const middleware = read("./middleware.ts");
+  const dashboard = read("./app/dashboard/layout.tsx");
+
+  // Middleware requires a real NextAuth token (!!token) for protected routes
+  assert.ok(middleware.includes("return !!token"), 'middleware requires a real NextAuth token');
+  // Middleware redirects non-ADMIN from /dashboard and /admin
+  assert.ok(middleware.includes('token?.role !== "ADMIN"'), 'middleware enforces ADMIN for dashboard/admin');
+  // Dashboard layout redirects unauthenticated to /login
+  assert.ok(dashboard.includes("redirect('/login')"), 'dashboard layout redirects unauthenticated to /login');
+  // Dashboard layout enforces ADMIN role
+  assert.ok(dashboard.includes("role !== 'ADMIN'"), 'dashboard layout enforces ADMIN role');
+});
+
