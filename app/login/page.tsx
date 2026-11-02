@@ -35,11 +35,6 @@ export default function LoginPage() {
     setError("");
 
     try {
-      // NextAuth v4 supported client API: establishes a REAL session cookie.
-      // redirect: false so we explicitly confirm the session cookie was set before
-      // navigating; with redirect: true signIn navigates internally and can race
-      // with cookie commit behind proxies, causing the session to be lost and the
-      // browser to bounce back to /login.
       const result = await signIn("credentials", {
         email,
         password,
@@ -52,13 +47,9 @@ export default function LoginPage() {
         return;
       }
 
-      // Keep the legacy static dashboard's auth wall in sync now that a real NextAuth
-      // session cookie exists. Full-page reload so DOMContentLoaded re-evaluates the
-      // localStorage-owned auth wall and boots the app.
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem("owner_session_active", "true");
+      if (typeof window !== "undefined") {
+        window.location.href = callbackUrl;
       }
-      window.location.href = callbackUrl;
     } catch (err: any) {
       setError("Sign in error: " + (err?.message || "Network error connecting to NextAuth API."));
     } finally {
@@ -70,8 +61,6 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      // Google OAuth via the supported NextAuth client API. Surfaces a clear error when
-      // the Google provider is not configured on the server.
       const result = await signIn("google", {
         callbackUrl,
         redirect: false,
@@ -98,28 +87,19 @@ export default function LoginPage() {
         return;
       }
 
-      // For OAuth providers with redirect:false, NextAuth returns the authorization URL
       if (result?.url) {
         window.location.href = result.url;
         return;
       }
 
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem("owner_session_active", "true");
+      if (typeof window !== "undefined") {
+        window.location.href = callbackUrl;
       }
-      window.location.href = callbackUrl;
     } catch (err: any) {
       setError(`Google sign-in error: ${err?.message || "Unable to initiate Google OAuth"}`);
     } finally {
       setLoading(false);
     }
-  }
-
-  function handleDemoLogin() {
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem("owner_session_active", "true");
-    }
-    window.location.href = callbackUrl;
   }
 
   return (
@@ -202,16 +182,6 @@ export default function LoginPage() {
               <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.24 0 3.17 2.64 1.19 6.58l4.09 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
             </svg>
             Continue with Google
-          </button>
-        </div>
-
-        <div className="mt-2">
-          <button
-            type="button"
-            onClick={handleDemoLogin}
-            className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold border border-slate-700 transition"
-          >
-            Use One-Click Demo Session
           </button>
         </div>
 
