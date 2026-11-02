@@ -9,8 +9,10 @@ export const dynamic = 'force-dynamic';
 
 export default async function Page() {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    redirect('/login');
+  const isAdminSession = !!session && (session.user as any)?.role === 'ADMIN';
+
+  if (!isAdminSession) {
+    redirect('/login?error=AccessDenied');
   }
 
   const pathsToTry = [
@@ -39,7 +41,7 @@ export default async function Page() {
         break;
       }
     } catch (e) {
-      // try next path
+      // ignore and continue to fallback HTML
     }
   }
 
