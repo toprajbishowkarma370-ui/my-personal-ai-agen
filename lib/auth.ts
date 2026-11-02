@@ -11,18 +11,34 @@ function isProduction() {
   return process.env.NODE_ENV === "production";
 }
 
+function normalizeEmail(value?: string | null) {
+  return value?.trim().toLowerCase() || "";
+}
+
+function getOwnerConfig() {
+  const ownerEmail = normalizeEmail(process.env.OWNER_EMAIL);
+  const ownerHash = process.env.OWNER_PASSWORD_HASH?.trim();
+  return { ownerEmail, ownerHash };
+}
+
 function validateProductionEnv(): string[] {
   const required = ["NEXTAUTH_SECRET", "NEXTAUTH_URL", "DATABASE_URL", "OWNER_EMAIL", "OWNER_PASSWORD_HASH"];
   const missing = required.filter((v) => !process.env[v]);
+
   if (missing.length > 0 && isProduction()) {
     throw new Error(`[Auth Security Error] Missing required production environment variables: ${missing.join(", ")}`);
   }
+
+  if (isProduction()) {
+    const nextAuthUrl = process.env.NEXTAUTH_URL?.trim();
+    if (nextAuthUrl && !/^https:\/\//i.test(nextAuthUrl)) {
+      throw new Error("[Auth Security Error] NEXTAUTH_URL must use https:// in production.");
+    }
+  }
+
   return missing;
 }
 
-// Do not validate at module load time: the build and dev server import this module
-// before production environment variables are available. Validation happens lazily at
-// request time inside authorize(), so production never starts with silent fallback secrets.
 export const authOptions: NextAuthOptions = {
   // @ts-ignore
   trustHost: true,
@@ -38,31 +54,28 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        // Fail safely in production: never authenticate when required secrets are absent.
         validateProductionEnv();
 
         if (!credentials?.email || !credentials?.password) {
           return null;
         }
 
-        const email = credentials.email?.toLowerCase()?.trim();
-        const ownerEmail = process.env.OWNER_EMAIL?.trim()?.toLowerCase();
-        const ownerHash = process.env.OWNER_PASSWORD_HASH?.trim();
+        const email = normalizeEmail(credentials.email);
+        const { ownerEmail, ownerHash } = getOwnerConfig();
 
         if (ownerEmail && ownerHash && email === ownerEmail) {
-          let ok = false;
           try {
-            ok = await bcrypt.compare(credentials.password, ownerHash);
+            const ok = await bcrypt.compare(credentials.password, ownerHash);
+            if (ok) {
+              return {
+                id: "owner_admin_01",
+                email: ownerEmail,
+                name: "Owner Admin",
+                role: "ADMIN",
+              } as any;
+            }
           } catch {
-            ok = false;
-          }
-          if (ok) {
-            return {
-              id: "owner_admin_01",
-              email: ownerEmail,
-              name: "Owner Admin",
-              role: "ADMIN",
-            } as any;
+            return null;
           }
         }
 
@@ -71,13 +84,16 @@ export const authOptions: NextAuthOptions = {
             where: { email },
           });
 
-          if (user?.passwordHash && await bcrypt.compare(credentials.password, user.passwordHash)) {
-            return {
-              id: user.id,
-              email: user.email,
-              name: user.name || "Agency Staff",
-              role: user.role,
-            } as any;
+          if (user?.passwordHash) {
+            const ok = await bcrypt.compare(credentials.password, user.passwordHash);
+            if (ok) {
+              return {
+                id: user.id,
+                email: user.email,
+                name: user.name || "Agency Staff",
+                role: user.role,
+              } as any;
+            }
           }
         } catch (error) {
           console.error("Prisma auth lookup error", error);
@@ -102,7 +118,6 @@ export const authOptions: NextAuthOptions = {
         ]
       : []),
   ],
-  // Configure cookies for production proxy environments
   cookies: {
     sessionToken: {
       name: process.env.NODE_ENV === "production" ? "__Secure-next-auth.session-token" : "next-auth.session-token",
@@ -110,7 +125,7 @@ export const authOptions: NextAuthOptions = {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: isProduction(),
       },
     },
     callbackUrl: {
@@ -119,7 +134,7 @@ export const authOptions: NextAuthOptions = {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: isProduction(),
       },
     },
     csrfToken: {
@@ -128,28 +143,35 @@ export const authOptions: NextAuthOptions = {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: isProduction(),
       },
     },
   },
   callbacks: {
     async signIn({ user, account, profile }) {
       if (account?.provider === "google") {
-        const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
-        const userEmail = user.email?.trim().toLowerCase();
+        const ownerEmail = normalizeEmail(process.env.OWNER_EMAIL);
+        const userEmail = normalizeEmail(user.email);
         const isVerified = (profile as any)?.email_verified === true || (profile as any)?.verified_email === true || (user as any)?.emailVerified;
+
+        if (!ownerEmail) {
+          console.error("Google sign-in rejected: OWNER_EMAIL is not configured.");
+          return false;
+        }
 
         if (!isVerified) {
           return false;
         }
 
-        if (ownerEmail && userEmail === ownerEmail) {
+        if (userEmail === ownerEmail) {
           (user as any).role = "ADMIN";
           return true;
         }
+
         console.error("Google sign-in rejected: user email does not match OWNER_EMAIL");
         return false;
       }
+
       return true;
     },
     async jwt({ token, user, account }) {
@@ -201,14 +223,14 @@ export async function requireAgentSession() {
 }
 
 export function requireOwnerEmail() {
-  const ownerEmail = process.env.OWNER_EMAIL?.trim();
+  const ownerEmail = normalizeEmail(process.env.OWNER_EMAIL);
   if (!ownerEmail) {
     throw new Error("UNAUTHORIZED: OWNER_EMAIL not configured");
   }
-  return ownerEmail.toLowerCase();
+  return ownerEmail;
 }
 
 export function isOwner(email?: string | null) {
   if (!email) return false;
-  return email.trim().toLowerCase() === requireOwnerEmail();
+  return normalizeEmail(email) === requireOwnerEmail();
 }
