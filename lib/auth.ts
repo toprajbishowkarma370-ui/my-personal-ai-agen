@@ -7,6 +7,16 @@ import { prisma } from "./prisma";
 
 export type Role = "ADMIN" | "AGENT" | "CLIENT";
 
+export const VALID_ROLES = new Set<Role>(["ADMIN", "AGENT", "CLIENT"]);
+
+export function normalizeRole(role: unknown): Role | undefined {
+  if (typeof role !== "string") {
+    return undefined;
+  }
+
+  return VALID_ROLES.has(role as Role) ? (role as Role) : undefined;
+}
+
 function isProduction() {
   return process.env.NODE_ENV === "production";
 }
@@ -20,9 +30,6 @@ function validateProductionEnv(): string[] {
   return missing;
 }
 
-// Do not validate at module load time: the build and dev server import this module
-// before production environment variables are available. Validation happens lazily at
-// request time inside authorize(), so production never starts with silent fallback secrets.
 export const authOptions: NextAuthOptions = {
   // @ts-ignore
   trustHost: true,
@@ -38,7 +45,6 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        // Fail safely in production: never authenticate when required secrets are absent.
         validateProductionEnv();
 
         if (!credentials?.email || !credentials?.password) {
@@ -56,6 +62,7 @@ export const authOptions: NextAuthOptions = {
           } catch {
             ok = false;
           }
+
           if (ok) {
             return {
               id: "owner_admin_01",
@@ -71,12 +78,17 @@ export const authOptions: NextAuthOptions = {
             where: { email },
           });
 
-          if (user?.passwordHash && await bcrypt.compare(credentials.password, user.passwordHash)) {
+          if (user?.passwordHash && (await bcrypt.compare(credentials.password, user.passwordHash))) {
+            const role = normalizeRole(user.role);
+            if (!role) {
+              return null;
+            }
+
             return {
               id: user.id,
               email: user.email,
               name: user.name || "Agency Staff",
-              role: user.role,
+              role,
             } as any;
           }
         } catch (error) {
@@ -102,7 +114,6 @@ export const authOptions: NextAuthOptions = {
         ]
       : []),
   ],
-  // Configure cookies for production proxy environments
   cookies: {
     sessionToken: {
       name: process.env.NODE_ENV === "production" ? "__Secure-next-auth.session-token" : "next-auth.session-token",
@@ -137,7 +148,10 @@ export const authOptions: NextAuthOptions = {
       if (account?.provider === "google") {
         const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
         const userEmail = user.email?.trim().toLowerCase();
-        const isVerified = (profile as any)?.email_verified === true || (profile as any)?.verified_email === true || (user as any)?.emailVerified;
+        const isVerified =
+          (profile as any)?.email_verified === true ||
+          (profile as any)?.verified_email === true ||
+          (user as any)?.emailVerified;
 
         if (!isVerified) {
           return false;
@@ -147,27 +161,54 @@ export const authOptions: NextAuthOptions = {
           (user as any).role = "ADMIN";
           return true;
         }
+
         console.error("Google sign-in rejected: user email does not match OWNER_EMAIL");
         return false;
       }
+
       return true;
     },
+
     async jwt({ token, user, account }) {
+      const userRole = normalizeRole((user as any)?.role ?? (token as any)?.role);
+
       if (user) {
-        token.id = user.id;
-        token.role = (user as any).role || "ADMIN";
+        (token as any).id = (user as any).id ?? (token as any).sub;
+        (token as any).sub = (token as any).id ?? (token as any).sub;
+        if ((user as any).email) {
+          (token as any).email = (user as any).email;
+        }
       }
+
+      if (userRole) {
+        (token as any).role = userRole;
+      } else {
+        delete (token as any).role;
+      }
+
       if (account?.provider === "google") {
-        token.provider = account.provider;
+        (token as any).provider = account.provider;
       }
+
       return token;
     },
+
     async session({ session, token }) {
+      const sessionRole = normalizeRole((token as any)?.role ?? (session.user as any)?.role);
+
       if (session.user) {
-        (session.user as any).id = token.id;
-        (session.user as any).role = token.role || "ADMIN";
-        (session.user as any).provider = token.provider;
+        (session.user as any).id = (token as any).sub ?? (token as any).id;
+        if (sessionRole) {
+          (session.user as any).role = sessionRole;
+        } else {
+          delete (session.user as any).role;
+        }
+
+        if ((token as any).provider) {
+          (session.user as any).provider = (token as any).provider;
+        }
       }
+
       return session;
     },
   },
@@ -181,8 +222,9 @@ export async function getAuthSession() {
 
 export async function requireAdminSession() {
   const session = await getAuthSession();
+  const role = normalizeRole((session as any)?.user?.role);
 
-  if (!session || ((session as any).user as any)?.role !== "ADMIN") {
+  if (!session || role !== "ADMIN") {
     throw new Error("UNAUTHORIZED: Owner ADMIN role required");
   }
 
@@ -191,9 +233,9 @@ export async function requireAdminSession() {
 
 export async function requireAgentSession() {
   const session = await getAuthSession();
-  const role = ((session as any)?.user as any)?.role;
+  const role = normalizeRole((session as any)?.user?.role);
 
-  if (!session || !["ADMIN", "AGENT"].includes(role)) {
+  if (!session || !role || !["ADMIN", "AGENT"].includes(role)) {
     throw new Error("UNAUTHORIZED: AGENT or ADMIN role required");
   }
 
