@@ -44,6 +44,7 @@ export default function LoginPage() {
 
   async function handleCredentialsLogin(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     if (!email || !password) {
       setError("Please enter both email and password.");
       return;
@@ -84,6 +85,7 @@ export default function LoginPage() {
   }
 
   async function handleGoogleLogin() {
+    if (loading) return;
     setError("");
     setLoading(true);
     try {
@@ -104,6 +106,8 @@ export default function LoginPage() {
         return;
       }
 
+      // OAuth must complete on Google's origin. NextAuth sends the callback to
+      // the protected root page, which independently validates the ADMIN session.
       if (result?.url) {
         window.location.assign(result.url);
       } else {

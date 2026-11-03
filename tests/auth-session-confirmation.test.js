@@ -9,15 +9,45 @@ const middleware = fs.readFileSync(path.join(__dirname, "../middleware.ts"), "ut
 const rootPage = fs.readFileSync(path.join(__dirname, "../app/page.tsx"), "utf8");
 const dashboard = fs.readFileSync(path.join(__dirname, "../app/dashboard/layout.tsx"), "utf8");
 
-test("credentials sign-in confirms the server session endpoint before redirecting", () => {
-  assert.match(source, /signIn\("credentials"/);
-  assert.match(source, /redirect: false/);
+function functionBody(name) {
+  const start = source.indexOf(`async function ${name}`);
+  assert.notEqual(start, -1, `${name} exists`);
+  const nextFunction = source.indexOf("\n  async function ", start + 1);
+  return source.slice(start, nextFunction === -1 ? source.length : nextFunction);
+}
+
+test("credentials sign-in confirms a fresh, cookie-authenticated ADMIN session before redirecting", () => {
+  const handler = functionBody("handleCredentialsLogin");
+  assert.match(handler, /if \(loading\) return/);
+  assert.match(handler, /signIn\("credentials"/);
+  assert.match(handler, /redirect: false/);
   assert.match(source, /fetch\("\/api\/auth\/session"/);
   assert.match(source, /credentials: "include"/);
   assert.match(source, /cache: "no-store"/);
   assert.match(source, /session\?\.user\?\.role === "ADMIN"/);
-  assert.match(source, /window\.location\.assign\(callbackUrl\)/);
-  assert.doesNotMatch(source, /owner_session_active.*(?:if|===)/s);
+  assert.match(source, /Boolean\(session\.user\.id\)/);
+  assert.match(source, /actualEmail === expectedEmail\.trim\(\)\.toLowerCase\(\)/);
+  assert.ok(handler.indexOf("confirmAdminSession(email)") < handler.indexOf("window.location.assign(callbackUrl)"));
+  assert.ok(handler.indexOf("confirmAdminSession(email)") < handler.indexOf('localStorage.setItem("owner_session_active"'));
+});
+
+test("Google OAuth completes through the protected callback URL, without localStorage authentication", () => {
+  const handler = functionBody("handleGoogleLogin");
+  assert.match(handler, /if \(loading\) return/);
+  assert.match(handler, /signIn\("google"/);
+  assert.match(handler, /callbackUrl/);
+  assert.match(handler, /window\.location\.assign\(result\.url\)/);
+  assert.doesNotMatch(handler, /localStorage/);
+  assert.match(rootPage, /getServerSession\(authOptions\)/);
+  assert.match(rootPage, /role === "ADMIN"/);
+});
+
+test("failed or malformed session checks fail closed and do not navigate", () => {
+  assert.match(source, /if \(!response\.ok\) return false/);
+  assert.match(source, /session\?\.user\?\.role === "ADMIN"/);
+  assert.match(source, /actualEmail === expectedEmail\.trim\(\)\.toLowerCase\(\)/);
+  assert.match(source, /if \(!\(await confirmAdminSession\(email\)\)\)/);
+  assert.match(source, /ADMIN session could not be confirmed/);
 });
 
 test("session mapping preserves only a valid server-provided role", () => {
