@@ -36,7 +36,14 @@ test("Google OAuth completes through the protected callback URL, without localSt
   assert.match(handler, /if \(loading\) return/);
   assert.match(handler, /signIn\("google"/);
   assert.match(handler, /callbackUrl/);
-  assert.match(handler, /window\.location\.assign\(result\.url\)/);
+  // Google OAuth uses NextAuth's full-page redirect; the signIn call must not set redirect:false
+  assert.match(handler, /await signIn\("google", \{[^}]*callbackUrl/);
+  // Verify redirect:false is not in the Google signIn call parameters (the comment may contain it, but the call must not)
+  const googleCall = handler.match(/signIn\("google", \{[^}]*\}\)/);
+  assert.ok(googleCall, 'Google signIn call found');
+  const callStr = googleCall[0];
+  assert.ok(!callStr.includes('redirect: false'), 'Google signIn must not use redirect: false');
+  assert.doesNotMatch(handler, /window\.location\.assign\(/);
   assert.doesNotMatch(handler, /localStorage/);
   assert.match(rootPage, /getServerSession\(authOptions\)/);
   assert.match(rootPage, /role === "ADMIN"/);
