@@ -89,10 +89,9 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const result = await signIn("google", {
-        callbackUrl,
-        redirect: false,
-      });
+      // OAuth providers must perform a full-page redirect to Google's
+      // authorization endpoint. redirect:false can return no URL for this flow.
+      await signIn("google", { callbackUrl });
 
       if (result?.error) {
         const msg = String(result.error);
