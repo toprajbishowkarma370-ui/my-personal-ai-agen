@@ -70,6 +70,26 @@ test("Missing Google OAuth configuration shows a useful server-side error", () =
   assert.ok(src.includes("OAuthNotConfigured") || src.includes("not configured"), 'OAuth not configured path handled');
 });
 
+test("Google sign-in navigates to the authorization URL returned by NextAuth", () => {
+  const src = read(LOGIN_PAGE);
+  // After signIn("google", { redirect: false }) the page must navigate to the
+  // Google authorization URL returned in result.url, not to callbackUrl (/).
+  assert.ok(src.includes('window.location.href = result.url'), 'google sign-in navigates to result.url (Google authorization URL)');
+  assert.ok(src.includes('sign-in did not return an authorization URL'), 'missing URL produces a clear error');
+  assert.ok(src.includes('result?.url'), 'login page inspects result.url before navigating');
+});
+
+test("Google sign-in does not navigate to callbackUrl (avoids bypassing OAuth)", () => {
+  const src = read(LOGIN_PAGE);
+  const googleBlock = src.slice(
+    src.indexOf('signIn("google"'),
+    src.indexOf('if (typeof localStorage', src.indexOf('signIn("google"'))
+  );
+  // The success path must navigate to result.url (Google), not callbackUrl (/).
+  assert.ok(googleBlock.includes('window.location.href = result.url'), 'google navigates to result.url');
+  assert.ok(!googleBlock.includes('window.location.href = callbackUrl'), 'google does not navigate to callbackUrl');
+});
+
 test("Google unauthorized account (non-owner) rejected by NextAuth authorize callback", async () => {
   // The NextAuth authorize callback only allows OWNER_EMAIL; others return null (401).
   async function simulateAuthorize(email, password, ownerEmail, ownerHash) {

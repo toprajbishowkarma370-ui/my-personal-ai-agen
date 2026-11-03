@@ -100,10 +100,13 @@ export default function LoginPage() {
         return;
       }
 
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem("owner_session_active", "true");
+      if (typeof result?.url === "string" && result.url) {
+        window.location.href = result.url;
+        return;
       }
-      window.location.href = callbackUrl;
+
+      setError("sign-in did not return an authorization URL. Please try again.");
+      return;
     } catch (err: any) {
       setError(`Google sign-in error: ${err?.message || "Unable to initiate Google OAuth"}`);
     } finally {
