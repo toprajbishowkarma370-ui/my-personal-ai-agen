@@ -140,8 +140,10 @@ test("Credentials signIn uses redirect:false so session is confirmed before navi
   const credsBlock = src.slice(src.indexOf('signIn("credentials"'), src.indexOf('handleGoogleLogin'));
   assert.ok(credsBlock.includes("redirect: false"), 'credentials signIn must use redirect:false');
   // On success, navigate to callbackUrl only after result.error is absent.
-  assert.ok(src.includes('if (result?.error)'), 'signIn result inspected before navigating');
+  // The session is confirmed server-side before any navigation.
+  assert.ok(src.includes('confirmAdminSession(email)'), 'server session confirmed before navigating');
   assert.ok(src.includes("window.location.assign(callbackUrl)"), 'navigates to callbackUrl on success');
+  assert.ok(src.includes('if (!result || result.error)'), 'signIn result inspected before navigating');
 });
 
 test("Auth cookie config sets secure flag in production for Render HTTPS", () => {
