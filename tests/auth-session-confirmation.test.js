@@ -31,18 +31,19 @@ test("credentials sign-in confirms a fresh, cookie-authenticated ADMIN session b
   assert.ok(handler.indexOf("confirmAdminSession(email)") < handler.indexOf('localStorage.setItem("owner_session_active"'));
 });
 
-test("Google OAuth completes through the protected callback URL, without localStorage authentication", () => {
+test("Google OAuth starts through NextAuth's full-page redirect and does not fake a session", () => {
   const handler = functionBody("handleGoogleLogin");
   assert.match(handler, /if \(loading\) return/);
-  assert.match(handler, /signIn\("google"/);
-  assert.match(handler, /callbackUrl/);
-  assert.match(handler, /window\.location\.assign\(result\.url\)/);
-  assert.doesNotMatch(handler, /localStorage/);
+  assert.match(handler, /await signIn\("google", \{ callbackUrl \}\)/);
+  // NextAuth v4 performs the browser navigation when redirect:false is omitted.
+  // Inspecting a result URL or navigating directly to callbackUrl can skip OAuth.
+  assert.doesNotMatch(handler, /redirect:\s*false/);
+  assert.doesNotMatch(handler, /result\.url|localStorage/);
   assert.match(rootPage, /getServerSession\(authOptions\)/);
   assert.match(rootPage, /role === "ADMIN"/);
 });
 
-test("failed or malformed session checks fail closed and do not navigate", () => {
+test("failed or malformed credentials session checks fail closed and do not navigate", () => {
   assert.match(source, /if \(!response\.ok\) return false/);
   assert.match(source, /session\?\.user\?\.role === "ADMIN"/);
   assert.match(source, /actualEmail === expectedEmail\.trim\(\)\.toLowerCase\(\)/);
@@ -72,23 +73,22 @@ test("root and dashboard routes continue to enforce server-side ADMIN authorizat
   assert.match(dashboard, /role !== "ADMIN"/);
 });
 
+test("Google sign-in is restricted to the verified configured owner account", () => {
+  assert.match(auth, /account\?\.provider === "google"/);
+  assert.match(auth, /if \(!isVerified\) \{\s*return false/);
+  assert.match(auth, /if \(ownerEmail && userEmail === ownerEmail\)/);
+  assert.match(auth, /Google sign-in rejected: user email does not match OWNER_EMAIL/);
+});
+
 test("the tested login page does not offer a local-only demo sign-in", () => {
   assert.doesNotMatch(source, /handleDemoLogin|Use One-Click Demo Session/);
 });
 
 test("Google OAuth callback URL derives from NEXTAUTH_URL, never localhost", () => {
-  // The redirect_uri_mismatch (http://localhost:3000/api/auth/callback/google)
-  // was caused by trustHost: true deriving the callback URL from the request
-  // Host header instead of NEXTAUTH_URL. trustHost must be absent as a NextAuth
-  // option (matched as trustHost: so explanatory comments do not false-positive).
+  // trustHost must not allow forwarded host headers to replace NEXTAUTH_URL.
   assert.doesNotMatch(auth, /trustHost\s*:/);
-
-  // NEXTAUTH_URL must be required so the OAuth callback always resolves to the
-  // configured production HTTPS domain, never localhost.
   assert.match(auth, /"NEXTAUTH_URL"/);
   assert.match(auth, /Missing required production environment variables/);
-
-  // No hardcoded localhost callback URL (with scheme) in auth or login page.
   assert.doesNotMatch(auth, /https?:\/\/localhost:3000/);
   assert.doesNotMatch(source, /https?:\/\/localhost:3000/);
 });
