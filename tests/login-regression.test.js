@@ -21,7 +21,9 @@ test("Login page imports signIn from next-auth/react (real session API)", () => 
   );
   assert.ok(src.includes('signIn("credentials"'), 'credentials signIn handler present');
   assert.ok(src.includes('signIn("google"'), 'Google signIn handler present');
-  assert.ok(src.includes("redirect: false"), 'signIn used with redirect:false to inspect result');
+  const googleBlock = src.slice(src.indexOf('async function handleGoogleLogin'), src.indexOf('\n  return ('));
+  assert.ok(googleBlock.includes('signIn("google", { callbackUrl })'), 'Google OAuth uses full-page redirect');
+  assert.ok(!googleBlock.includes('redirect: false'), 'Google OAuth does not disable redirects');
 });
 
 test("No active reference to undefined window.signInWithGoogle in login flow", () => {

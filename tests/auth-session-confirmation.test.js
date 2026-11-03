@@ -75,3 +75,20 @@ test("root and dashboard routes continue to enforce server-side ADMIN authorizat
 test("the tested login page does not offer a local-only demo sign-in", () => {
   assert.doesNotMatch(source, /handleDemoLogin|Use One-Click Demo Session/);
 });
+
+test("Google OAuth callback URL derives from NEXTAUTH_URL, never localhost", () => {
+  // The redirect_uri_mismatch (http://localhost:3000/api/auth/callback/google)
+  // was caused by trustHost: true deriving the callback URL from the request
+  // Host header instead of NEXTAUTH_URL. trustHost must be absent as a NextAuth
+  // option (matched as trustHost: so explanatory comments do not false-positive).
+  assert.doesNotMatch(auth, /trustHost\s*:/);
+
+  // NEXTAUTH_URL must be required so the OAuth callback always resolves to the
+  // configured production HTTPS domain, never localhost.
+  assert.match(auth, /"NEXTAUTH_URL"/);
+  assert.match(auth, /Missing required production environment variables/);
+
+  // No hardcoded localhost callback URL (with scheme) in auth or login page.
+  assert.doesNotMatch(auth, /https?:\/\/localhost:3000/);
+  assert.doesNotMatch(source, /https?:\/\/localhost:3000/);
+});

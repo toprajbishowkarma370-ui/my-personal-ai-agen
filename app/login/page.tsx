@@ -89,34 +89,12 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const result = await signIn("google", {
-        callbackUrl,
-        redirect: false,
-      });
-
-      if (result?.error) {
-        const msg = String(result.error);
-        if (result.status === 401) {
-          setError("Access Denied: Owner ADMIN role required. Only the configured OWNER_EMAIL may sign in with Google.");
-        } else if (msg.toLowerCase().includes("oauth") || msg.toLowerCase().includes("provider")) {
-          setError("Google OAuth is not configured on the server. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Render environment variables.");
-        } else {
-          setError(`Google sign-in failed: ${msg}`);
-        }
-        return;
-      }
-
-      // OAuth must complete on Google's origin. NextAuth sends the callback to
-      // the protected root page, which independently validates the ADMIN session.
-      if (result?.url) {
-        window.location.assign(result.url);
-      } else {
-        setError("Google sign-in did not return an authorization URL. Please try again.");
-      }
+      // OAuth requires a browser navigation to Google's authorization endpoint.
+      // Do not use redirect:false or inspect a returned URL for this provider.
+      await signIn("google", { callbackUrl });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unable to initiate Google OAuth.";
       setError(`Google sign-in error: ${message}`);
-    } finally {
       setLoading(false);
     }
   }

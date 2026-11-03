@@ -31,8 +31,11 @@ function validateProductionEnv(): string[] {
 }
 
 export const authOptions: NextAuthOptions = {
-  // @ts-ignore
-  trustHost: true,
+  // NEXTAUTH_URL is the single source of truth for the OAuth callback URL.
+  // trustHost is intentionally NOT set: it would derive the callback URL from
+  // the incoming request Host/X-Forwarded-Host header (e.g. localhost:3000
+  // behind Render's proxy) instead of NEXTAUTH_URL, causing
+  // redirect_uri_mismatch against Google's configured production callback.
   session: {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60,
