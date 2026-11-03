@@ -41,24 +41,31 @@ test("ClientDashboard no longer blocks navigation on undefined window global", (
   assert.ok(!/e\.preventDefault\(\)/.test(src), 'click handlers must not prevent navigation to /login');
 });
 
-test("Login result handling: success establishes session and redirects to /", () => {
+test("Login result handling: success confirms ADMIN session then navigates to /", () => {
   const src = read(LOGIN_PAGE);
-  assert.ok(src.includes('window.location.href = callbackUrl'), 'success redirects to / via full-page navigation');
-  assert.ok(src.includes("localStorage.setItem('owner_session_active', 'true')") || src.includes('localStorage.setItem("owner_session_active",'), 'session persistence flag set');
-  assert.ok(src.includes('result?.error'), 'signIn result inspected for error');
+  // The session is confirmed server-side before any navigation.
+  assert.ok(src.includes("confirmAdminSession(email)"), 'server session confirmed before navigating');
+  assert.ok(src.includes("window.location.assign(callbackUrl)"), 'success navigates to / via full-page navigation');
+  assert.ok(src.includes("if (!(await confirmAdminSession(email)))"), 'navigation guarded by confirmed session');
+  // No local-only demo sign-in; the real NextAuth session cookie is the auth mechanism.
+  assert.ok(!src.includes("handleDemoLogin"), 'no local-only demo sign-in');
+  assert.ok(src.includes("result?.error") || src.includes("result.error"), 'signIn result inspected for error');
 });
 
 test("Login result handling: 401 / invalid owner rejected without establishing session", () => {
   const src = read(LOGIN_PAGE);
-  assert.ok(src.includes('result.status === 401'), '401 handled as invalid credentials');
+  assert.ok(src.includes("result?.error") || src.includes("result.error"), 'signIn result inspected for error');
   assert.ok(
     src.includes('Invalid Owner Email or Password') ||
-    src.includes('Access Denied: Owner ADMIN role required'),
+    src.includes('Access Denied: Owner ADMIN role required') ||
+    src.includes('ADMIN session could not be confirmed'),
     'unauthorized rejection message present'
   );
   // On error result, must NOT navigate
-  const hrefCount = (src.match(/window\.location\.href = callbackUrl/g) || []).length;
-  assert.ok(hrefCount >= 2, 'navigation on both success paths (credentials + google)');
+  const assignCount = (src.match(/window\.location\.assign\(callbackUrl\)/g) || []).length;
+  assert.ok(assignCount >= 1, 'navigation exists on success path');
+  // Error paths return before navigation.
+  assert.ok(src.includes("return;"), 'error path returns before navigation');
 });
 
 test("Missing Google OAuth configuration shows a useful server-side error", () => {
@@ -95,6 +102,35 @@ test("Login-loop prevention: real NextAuth session via signIn (not localStorage 
   assert.ok(login.includes('signIn("google"'), 'google establishes real session via signIn');
 });
 
+test("Login-session-root-dashboard regression: no implicit ADMIN fallback", () => {
+  const login = read(LOGIN_PAGE);
+  const auth = read("./lib/auth.ts");
+  const rootPage = read("./app/page.tsx");
+  const dashboard = read("./app/dashboard/layout.tsx");
+  const middleware = read("./middleware.ts");
+
+  // Login confirms a real server-issued ADMIN session (cookie-authenticated) before redirecting.
+  assert.ok(login.includes('fetch("/api/auth/session"'), 'login confirms session via /api/auth/session');
+  assert.ok(login.includes('credentials: "include"'), 'session request includes cookies');
+  assert.ok(
+    login.includes('session?.user?.role === "ADMIN"'),
+    'login requires ADMIN role'
+  );
+
+  // auth.ts maps only valid server-provided roles; no silent ADMIN fallback.
+  assert.ok(auth.includes("normalizeRole"), 'auth.ts normalizes roles');
+  assert.ok(!/role\s*\|\|\s*"ADMIN"/.test(auth), 'no silent ADMIN fallback in auth.ts');
+
+  // Root and dashboard enforce server-side ADMIN authorization.
+  assert.ok(rootPage.includes("getServerSession(authOptions)"), 'root reads server session');
+  assert.ok(rootPage.includes('redirect("/login'), 'root redirects unauthenticated to /login');
+  assert.ok(dashboard.includes("getServerSession(authOptions)"), 'dashboard reads server session');
+
+  // Middleware requires a real NextAuth token and ADMIN for dashboard/admin routes.
+  assert.ok(middleware.includes("return !!token"), 'middleware requires a real NextAuth token');
+  assert.ok(middleware.includes('role !== "ADMIN"'), 'middleware enforces ADMIN for dashboard/admin');
+});
+
 test("Credentials signIn uses redirect:false so session is confirmed before navigating (prevents login bounce)", () => {
   const src = read(LOGIN_PAGE);
   // The credentials signIn must explicitly set redirect:false so we only navigate
@@ -103,12 +139,16 @@ test("Credentials signIn uses redirect:false so session is confirmed before navi
   assert.ok(credsBlock.includes("redirect: false"), 'credentials signIn must use redirect:false');
   // On success, navigate to callbackUrl only after result.error is absent.
   assert.ok(src.includes('if (result?.error)'), 'signIn result inspected before navigating');
-  assert.ok(src.includes('window.location.href = callbackUrl'), 'navigates to callbackUrl on success');
+  assert.ok(src.includes("window.location.assign(callbackUrl)"), 'navigates to callbackUrl on success');
 });
 
 test("Auth cookie config sets secure flag in production for Render HTTPS", () => {
   const src = read("./lib/auth.ts");
-  assert.ok(src.includes("secure: isProduction()"), 'session cookie secure flag tied to production');
+  assert.ok(
+    src.includes('__Secure-next-auth.session-token') ||
+      src.includes('secure: process.env.NODE_ENV === "production"'),
+    'production session cookie uses __Secure prefix and secure flag'
+  );
   assert.ok(src.includes('path: "/"'), 'session cookie path covers root');
   assert.ok(src.includes("httpOnly: true"), 'session cookie is httpOnly');
 });

@@ -3,6 +3,10 @@
 import { signIn } from "next-auth/react";
 import { useEffect, useState } from "react";
 
+type SessionResponse = {
+  user?: { email?: string | null; role?: string; id?: string };
+} | null;
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -16,7 +20,7 @@ export default function LoginPage() {
     const params = new URLSearchParams(window.location.search);
     const errParam = params.get("error");
     if (!errParam || error) return;
-    if (errParam === "AccessDenied" || errParam === "Forbidden" || errParam === "OAuthCallbackError") {
+    if (["AccessDenied", "Forbidden", "OAuthCallbackError"].includes(errParam)) {
       setError("Access Denied: Owner ADMIN role required.");
     } else if (errParam === "OAuthNotConfigured") {
       setError("Google OAuth is not configured on the server. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Render environment variables.");
@@ -25,8 +29,22 @@ export default function LoginPage() {
     }
   }, [error]);
 
+  async function confirmAdminSession(expectedEmail: string) {
+    const response = await fetch("/api/auth/session", {
+      credentials: "include",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) return false;
+
+    const session = (await response.json()) as SessionResponse;
+    const actualEmail = session?.user?.email?.trim().toLowerCase();
+    return session?.user?.role === "ADMIN" && Boolean(session.user.id) && actualEmail === expectedEmail.trim().toLowerCase();
+  }
+
   async function handleCredentialsLogin(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     if (!email || !password) {
       setError("Please enter both email and password.");
       return;
@@ -35,11 +53,6 @@ export default function LoginPage() {
     setError("");
 
     try {
-      // NextAuth v4 supported client API: establishes a REAL session cookie.
-      // redirect: false so we explicitly confirm the session cookie was set before
-      // navigating; with redirect: true signIn navigates internally and can race
-      // with cookie commit behind proxies, causing the session to be lost and the
-      // browser to bounce back to /login.
       const result = await signIn("credentials", {
         email,
         password,
@@ -47,79 +60,65 @@ export default function LoginPage() {
         redirect: false,
       });
 
-      if (result?.error) {
-        setError(result.status === 401 ? "Invalid Owner Email or Password." : "Sign in failed: " + result.error);
+      if (!result || result.error) {
+        setError(result?.status === 401 ? "Invalid Owner Email or Password." : `Sign in failed${result?.error ? `: ${result.error}` : "."}`);
         return;
       }
 
-      // Keep the legacy static dashboard's auth wall in sync now that a real NextAuth
-      // session cookie exists. Full-page reload so DOMContentLoaded re-evaluates the
-      // localStorage-owned auth wall and boots the app.
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem("owner_session_active", "true");
+      // A successful signIn response is not enough to prove the browser can read
+      // the session cookie. Confirm the server-issued session before navigating.
+      if (!(await confirmAdminSession(email))) {
+        setError("Sign-in was accepted, but an ADMIN session could not be confirmed. Please try again or contact the owner.");
+        return;
       }
-      window.location.href = callbackUrl;
-    } catch (err: any) {
-      setError("Sign in error: " + (err?.message || "Network error connecting to NextAuth API."));
+
+      // This flag only dismisses the legacy HTML auth wall; authorization is
+      // enforced by NextAuth middleware and server-side session checks.
+      window.localStorage.setItem("owner_session_active", "true");
+      window.location.assign(callbackUrl);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Network error connecting to NextAuth API.";
+      setError(`Sign in error: ${message}`);
     } finally {
       setLoading(false);
     }
   }
 
   async function handleGoogleLogin() {
+    if (loading) return;
     setError("");
     setLoading(true);
     try {
-      // Google OAuth via the supported NextAuth client API. Surfaces a clear error when
-      // the Google provider is not configured on the server.
       const result = await signIn("google", {
         callbackUrl,
         redirect: false,
       });
 
       if (result?.error) {
-        const msg = String(result.error || "");
-        if (
-          msg.includes("OAuth not configured") ||
-          msg.includes("Provider") ||
-          msg.includes("oauth") ||
-          result.status === 401
-        ) {
-          if (result.status === 401 && !msg.includes("configured")) {
-            setError("Access Denied: Owner ADMIN role required. Only the configured OWNER_EMAIL may sign in with Google.");
-          } else {
-            setError("Google OAuth is not configured on the server. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Render environment variables.");
-          }
-        } else if (result.status === 401) {
+        const msg = String(result.error);
+        if (result.status === 401) {
           setError("Access Denied: Owner ADMIN role required. Only the configured OWNER_EMAIL may sign in with Google.");
+        } else if (msg.toLowerCase().includes("oauth") || msg.toLowerCase().includes("provider")) {
+          setError("Google OAuth is not configured on the server. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Render environment variables.");
         } else {
-          setError("Google sign-in failed: " + msg);
+          setError(`Google sign-in failed: ${msg}`);
         }
         return;
       }
 
-      // For OAuth providers with redirect:false, NextAuth returns the authorization URL
+      // OAuth must complete on Google's origin. NextAuth sends the callback to
+      // the protected root page, which independently validates the ADMIN session.
       if (result?.url) {
-        window.location.href = result.url;
-        return;
+        window.location.assign(result.url);
+      } else {
+        setError("Google sign-in did not return an authorization URL. Please try again.");
       }
-
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem("owner_session_active", "true");
-      }
-      window.location.href = callbackUrl;
-    } catch (err: any) {
-      setError(`Google sign-in error: ${err?.message || "Unable to initiate Google OAuth"}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unable to initiate Google OAuth.";
+      setError(`Google sign-in error: ${message}`);
     } finally {
       setLoading(false);
     }
-  }
-
-  function handleDemoLogin() {
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem("owner_session_active", "true");
-    }
-    window.location.href = callbackUrl;
   }
 
   return (
@@ -128,74 +127,37 @@ export default function LoginPage() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-gradient-to-r from-transparent via-brand-500 to-transparent"></div>
 
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand-500/10 border border-brand-500/30 text-brand-400 mb-3 font-mono font-bold text-lg">
-            AI
-          </div>
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand-500/10 border border-brand-500/30 text-brand-400 mb-3 font-mono font-bold text-lg">AI</div>
           <h1 className="text-xl font-black text-white tracking-tight">My Personal AI Business Agent</h1>
-          <p className="text-xs text-slate-400 mt-1">Owner Portal & Autonomous Business OS Login</p>
+          <p className="text-xs text-slate-400 mt-1">Owner Portal &amp; Autonomous Business OS Login</p>
         </div>
 
-        {error && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs">
-            {error}
-          </div>
-        )}
+        {error && <div role="alert" className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs">{error}</div>}
 
         <form onSubmit={handleCredentialsLogin} className="space-y-4">
           <div>
             <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">Owner Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="owner@gmail.com"
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-brand-500 transition"
-              required
-            />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="owner@gmail.com" className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-brand-500 transition" required autoComplete="username" />
           </div>
 
           <div>
             <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">Password</label>
             <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 pr-10 text-sm text-white focus:outline-none focus:border-brand-500 transition"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white text-xs focus:outline-none"
-              >
-                {showPassword ? "Hide" : "Show"}
-              </button>
+              <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 pr-10 text-sm text-white focus:outline-none focus:border-brand-500 transition" required autoComplete="current-password" />
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white text-xs focus:outline-none">{showPassword ? "Hide" : "Show"}</button>
             </div>
           </div>
 
-          <div className="text-[11px] font-mono text-slate-500">
-            Enter your configured OWNER_EMAIL and password. • NextAuth Credentials / Google OAuth
-          </div>
+          <div className="text-[11px] font-mono text-slate-500">Enter your configured OWNER_EMAIL and password. • NextAuth Credentials / Google OAuth</div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-sm font-black transition shadow-lg shadow-brand-600/20 disabled:opacity-50"
-          >
+          <button type="submit" disabled={loading} className="w-full py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-sm font-black transition shadow-lg shadow-brand-600/20 disabled:opacity-50">
             {loading ? "Authenticating..." : "🔒 Authenticate as Owner"}
           </button>
         </form>
 
         <div className="mt-3">
-          <button
-            type="button"
-            onClick={handleGoogleLogin}
-            disabled={loading}
-            className="w-full py-3 bg-white hover:bg-slate-100 text-slate-900 rounded-xl text-sm font-bold flex items-center justify-center gap-2.5 transition shadow"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24">
+          <button type="button" onClick={handleGoogleLogin} disabled={loading} className="w-full py-3 bg-white hover:bg-slate-100 text-slate-900 rounded-xl text-sm font-bold flex items-center justify-center gap-2.5 transition shadow disabled:opacity-50">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
               <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-8.87z" />
               <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.19v3.15C3.17 21.36 7.24 24 12 24z" />
               <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.19C.43 8.12 0 9.87 0 11.7s.43 3.58 1.19 5.12l4.09-2.55z" />
@@ -205,19 +167,7 @@ export default function LoginPage() {
           </button>
         </div>
 
-        <div className="mt-2">
-          <button
-            type="button"
-            onClick={handleDemoLogin}
-            className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold border border-slate-700 transition"
-          >
-            Use One-Click Demo Session
-          </button>
-        </div>
-
-        <div className="mt-4 p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-400 text-center">
-          NextAuth session via <code className="text-slate-300">signIn()</code> from next-auth/react.
-        </div>
+        <div className="mt-4 p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-400 text-center">NextAuth session via <code className="text-slate-300">signIn()</code> from next-auth/react.</div>
       </div>
     </div>
   );
