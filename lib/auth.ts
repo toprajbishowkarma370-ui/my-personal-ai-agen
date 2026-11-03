@@ -54,7 +54,10 @@ export const authOptions: NextAuthOptions = {
         const ownerEmail = process.env.OWNER_EMAIL?.trim()?.toLowerCase();
         const ownerHash = process.env.OWNER_PASSWORD_HASH?.trim();
 
-        if (ownerEmail && ownerHash && email === ownerEmail) {
+        const isOwnerEmail = ownerEmail && email === ownerEmail;
+
+        // If this is the owner email and an env hash is configured, try it first.
+        if (isOwnerEmail && ownerHash) {
           let ok = false;
           try {
             ok = await bcrypt.compare(credentials.password, ownerHash);
@@ -69,8 +72,12 @@ export const authOptions: NextAuthOptions = {
               role: "ADMIN",
             } as any;
           }
+          // Env hash did not match: fall through to the database check so a
+          // password reset (stored in User.passwordHash) still works.
         }
 
+        // Fallback: database-backed password login. Covers password resets and
+        // non-owner users whose credentials live in the database.
         try {
           const user = await prisma.user.findUnique({
             where: { email },

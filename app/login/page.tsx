@@ -12,6 +12,13 @@ export default function LoginPage() {
 
   const callbackUrl = "/";
 
+  // Forgot password / OTP reset flow state
+  const [resetMode, setResetMode] = useState<"email" | "otp" | "password" | null>(null);
+  const [otpEmail, setOtpEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const errParam = params.get("error");
@@ -114,6 +121,87 @@ export default function LoginPage() {
     }
   }
 
+  // Forgot password: request a one-time password (OTP) sent to the owner email.
+  async function handleForgotPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setResetLoading(true);
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: otpEmail.trim() }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json.error || "Failed to send OTP. Try again.");
+        return;
+      }
+      setResetMode("otp");
+    } catch {
+      setError("Failed to send OTP. Try again.");
+    } finally {
+      setResetLoading(false);
+    }
+  }
+
+  // Verify the OTP and issue a single-use reset token.
+  async function handleVerifyOTP(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setResetLoading(true);
+    try {
+      const res = await fetch("/api/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: otpEmail.trim(), otp: otpCode }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json.error || "Invalid or expired OTP.");
+        return;
+      }
+      if (json.ok && json.resetToken) {
+        setResetMode("password");
+      } else {
+        setError("Invalid or expired OTP.");
+      }
+    } catch {
+      setError("Failed to verify OTP. Try again.");
+    } finally {
+      setResetLoading(false);
+    }
+  }
+
+  // Set a new password after successful OTP verification.
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setResetLoading(true);
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resetToken: otpCode, newPassword }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json.error || "Failed to reset password. Try again.");
+        return;
+      }
+      setError("");
+      setResetMode(null);
+      setOtpEmail("");
+      setOtpCode("");
+      setNewPassword("");
+      setError("Password reset successful. You can now sign in with your new password.");
+    } catch {
+      setError("Failed to reset password. Try again.");
+    } finally {
+      setResetLoading(false);
+    }
+  }
+
   function handleDemoLogin() {
     if (typeof localStorage !== "undefined") {
       localStorage.setItem("owner_session_active", "true");
@@ -186,6 +274,91 @@ export default function LoginPage() {
             {loading ? "Authenticating..." : "🔒 Authenticate as Owner"}
           </button>
         </form>
+
+        {resetMode === null && (
+          <p className="text-[10px] text-center text-slate-500 mt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setResetMode("email");
+                setError("");
+              }}
+              className="text-xs text-brand-400 hover:text-brand-300 underline decoration-brand-500/30"
+            >
+              Forgot password?
+            </button>
+          </p>
+        )}
+
+        {resetMode === "email" && (
+          <form onSubmit={handleForgotPassword} className="mt-4 space-y-3">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">Owner Email</label>
+              <input
+                type="email"
+                value={otpEmail}
+                onChange={(e) => setOtpEmail(e.target.value)}
+                placeholder="owner@gmail.com"
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-brand-500 transition"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={resetLoading}
+              className="w-full py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold transition disabled:opacity-50"
+            >
+              {resetLoading ? "Sending..." : "Send OTP"}
+            </button>
+          </form>
+        )}
+
+        {resetMode === "otp" && (
+          <form onSubmit={handleVerifyOTP} className="mt-4 space-y-3">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">6-digit OTP</label>
+              <input
+                type="text"
+                maxLength={6}
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="123456"
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-brand-500 transition"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={resetLoading}
+              className="w-full py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold transition disabled:opacity-50"
+            >
+              {resetLoading ? "Verifying..." : "Verify OTP"}
+            </button>
+          </form>
+        )}
+
+        {resetMode === "password" && (
+          <form onSubmit={handleResetPassword} className="mt-4 space-y-3">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">New Password</label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-brand-500 transition"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={resetLoading}
+              className="w-full py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold transition disabled:opacity-50"
+            >
+              {resetLoading ? "Resetting..." : "Reset Password"}
+            </button>
+          </form>
+        )}
 
         <div className="mt-3">
           <button
