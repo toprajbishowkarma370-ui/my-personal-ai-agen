@@ -6,6 +6,33 @@ class FakeOtpStore {
   constructor() {
     this.rows = [];
     this.sequence = 0;
+    this.locks = new Map();
+  }
+
+  async #acquire(key) {
+    const previous = this.locks.get(key) || Promise.resolve();
+    let release;
+    const held = new Promise((resolve) => {
+      release = resolve;
+    });
+    this.locks.set(key, previous.then(() => held));
+    await previous;
+    return () => release();
+  }
+
+  // Mirrors the Prisma store: work for one email/IP is serialized, so the
+  // rate-limit check and the insert cannot interleave.
+  async withLock({ email, ip }, fn) {
+    const keys = [`email:${email}`, ...(ip ? [`ip:${ip}`] : [])].sort();
+    const releases = [];
+    try {
+      for (const key of keys) {
+        releases.push(await this.#acquire(key));
+      }
+      return await fn(this);
+    } finally {
+      for (const release of releases.reverse()) release();
+    }
   }
 
   async countRequestsSince({ email, ip, since }) {

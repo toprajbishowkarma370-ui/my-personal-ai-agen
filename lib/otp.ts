@@ -49,11 +49,9 @@ export type OtpRateSnapshot = {
 };
 
 /**
- * Persistence contract for the OTP flow. Implementations MUST make
- * `consumeIfActive` atomic (a single conditional UPDATE) so two concurrent
- * verifications cannot both succeed for the same code.
+ * Statement-level persistence used inside an issuance lock.
  */
-export interface OtpStore {
+export interface OtpTransaction {
   countRequestsSince(input: { email: string; ip: string | null; since: Date }): Promise<OtpRateSnapshot>;
   invalidateActive(email: string, now: Date): Promise<number>;
   create(input: {
@@ -63,6 +61,22 @@ export interface OtpStore {
     requestIp: string | null;
     createdAt: Date;
   }): Promise<OtpRecord>;
+}
+
+/**
+ * Persistence contract for the OTP flow.
+ *
+ * Implementations MUST provide two guarantees:
+ *
+ * 1. `withLock` serializes all work for the same email (and the same IP) so the
+ *    rate-limit check, invalidation and insert happen as one atomic unit. Two
+ *    concurrent requests can therefore never both pass the limit check or both
+ *    leave an active code behind.
+ * 2. `consumeIfActive` is a single conditional UPDATE so a code can be consumed
+ *    exactly once even when two verifications race.
+ */
+export interface OtpStore extends OtpTransaction {
+  withLock<T>(keys: { email: string; ip: string | null }, fn: (tx: OtpTransaction) => Promise<T>): Promise<T>;
   findActive(email: string, now: Date): Promise<OtpRecord[]>;
   findLatestUnconsumed(email: string): Promise<OtpRecord | null>;
   findConsumedByHash(email: string, codeHash: string): Promise<OtpRecord | null>;
@@ -189,36 +203,43 @@ export async function requestOtpLogin(input: {
     return { status: "unavailable" };
   }
 
-  const since = new Date(now.getTime() - OTP_RATE_WINDOW_MS);
-  const rate = await input.store.countRequestsSince({ email, ip, since });
+  // The whole check-then-write sequence runs under the store lock, so it is
+  // atomic: concurrent requests for the same email (or from the same IP) are
+  // serialized and can neither bypass the limits nor leave two valid codes.
+  return await input.store.withLock({ email, ip }, async (tx) => {
+    const since = new Date(now.getTime() - OTP_RATE_WINDOW_MS);
+    const rate = await tx.countRequestsSince({ email, ip, since });
 
-  if (rate.emailCount >= OTP_MAX_REQUESTS_PER_EMAIL) {
-    return { status: "rate_limited", retryAfterSeconds: retryAfterSeconds(rate.oldestEmailCreatedAt, now) };
-  }
+    if (rate.emailCount >= OTP_MAX_REQUESTS_PER_EMAIL) {
+      return { status: "rate_limited" as const, retryAfterSeconds: retryAfterSeconds(rate.oldestEmailCreatedAt, now) };
+    }
 
-  if (ip && rate.ipCount >= OTP_MAX_REQUESTS_PER_IP) {
-    return { status: "rate_limited", retryAfterSeconds: retryAfterSeconds(rate.oldestIpCreatedAt, now) };
-  }
+    if (ip && rate.ipCount >= OTP_MAX_REQUESTS_PER_IP) {
+      return { status: "rate_limited" as const, retryAfterSeconds: retryAfterSeconds(rate.oldestIpCreatedAt, now) };
+    }
 
-  const code = generateOtpCode();
-  const expiresAt = new Date(now.getTime() + OTP_TTL_MS);
+    const code = generateOtpCode();
+    const expiresAt = new Date(now.getTime() + OTP_TTL_MS);
 
-  await input.store.invalidateActive(email, now);
-  await input.store.create({
-    email,
-    codeHash: hashOtpCode(code, input.secret),
-    expiresAt,
-    requestIp: ip,
-    createdAt: now,
+    // Invalidating superseded codes inside the same transaction means no reader
+    // can ever observe two valid codes for one address.
+    await tx.invalidateActive(email, now);
+    await tx.create({
+      email,
+      codeHash: hashOtpCode(code, input.secret),
+      expiresAt,
+      requestIp: ip,
+      createdAt: now,
+    });
+
+    return {
+      status: "sent" as const,
+      email,
+      deliver: isOwnerEmail(email, input.ownerEmail),
+      code,
+      expiresAt,
+    };
   });
-
-  return {
-    status: "sent",
-    email,
-    deliver: isOwnerEmail(email, input.ownerEmail),
-    code,
-    expiresAt,
-  };
 }
 
 /**

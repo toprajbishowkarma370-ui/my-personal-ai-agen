@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { normalizeTrustedProxyHops, resolveClientIp } from "@/lib/client-ip";
 import { requestOtpLogin } from "@/lib/otp";
 import { prismaOtpStore } from "@/lib/otp-store";
 import { isOtpDeliveryConfigured, sendOtpEmail } from "@/lib/otp-email";
@@ -8,13 +9,23 @@ export const runtime = "nodejs";
 
 const GENERIC_MESSAGE = "If this address is authorized, a 6-digit sign-in code has been sent.";
 
-function clientIp(req: NextRequest): string | null {
-  const forwarded = req.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return req.headers.get("x-real-ip");
+/**
+ * Resolve the rate-limiting identity of the caller.
+ *
+ * Render (and other proxies) append their peer's address to X-Forwarded-For,
+ * so its left side is attacker-controlled and must never be used. The trusted
+ * entry is read from the right (see lib/client-ip.ts). When no trustworthy
+ * address is available the request joins a single shared "untrusted" bucket
+ * instead of getting a fresh, spoofable identity.
+ */
+function clientIp(req: NextRequest): string {
+  const resolved = resolveClientIp({
+    forwardedFor: req.headers.get("x-forwarded-for"),
+    realIp: req.headers.get("x-real-ip"),
+    trustedProxyHops: normalizeTrustedProxyHops(process.env.TRUSTED_PROXY_HOPS),
+  });
+
+  return resolved ?? "untrusted";
 }
 
 function isSameOrigin(req: NextRequest): boolean {
