@@ -7,10 +7,18 @@ type SessionResponse = {
   user?: { email?: string | null; role?: string; id?: string };
 } | null;
 
+type LoginMode = "password" | "otp";
+
 export default function LoginPage() {
+  const [mode, setMode] = useState<LoginMode>("password");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [otpEmail, setOtpEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpNotice, setOtpNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -40,6 +48,16 @@ export default function LoginPage() {
     const session = (await response.json()) as SessionResponse;
     const actualEmail = session?.user?.email?.trim().toLowerCase();
     return session?.user?.role === "ADMIN" && Boolean(session.user.id) && actualEmail === expectedEmail.trim().toLowerCase();
+  }
+
+  function switchMode(nextMode: LoginMode) {
+    if (loading || otpSending) return;
+    setError("");
+    setOtpNotice("");
+    if (nextMode === "otp" && !otpEmail) {
+      setOtpEmail(email);
+    }
+    setMode(nextMode);
   }
 
   async function handleCredentialsLogin(e: React.FormEvent) {
@@ -84,6 +102,87 @@ export default function LoginPage() {
     }
   }
 
+  async function handleOtpRequest(e: React.FormEvent) {
+    e.preventDefault();
+    if (loading || otpSending) return;
+    if (!otpEmail.trim()) {
+      setError("Please enter the owner email address.");
+      return;
+    }
+
+    setOtpSending(true);
+    setError("");
+    setOtpNotice("");
+
+    try {
+      const response = await fetch("/api/auth/otp/request", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: otpEmail }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string; error?: string };
+
+      if (!response.ok || !data.success) {
+        setError(data.error || "Could not send a sign-in code.");
+        return;
+      }
+
+      setOtpSent(true);
+      setOtpNotice(data.message || "If this address is authorized, a 6-digit sign-in code has been sent.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Network error requesting a sign-in code.";
+      setError(`Sign in error: ${message}`);
+    } finally {
+      setOtpSending(false);
+    }
+  }
+
+  async function handleOtpLogin(e: React.FormEvent) {
+    e.preventDefault();
+    if (loading) return;
+
+    const code = otpCode.replace(/\s+/g, "");
+    if (!/^\d{6}$/.test(code)) {
+      setError("Enter the 6-digit code from your email.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      // The Credentials provider verifies and consumes the code exactly once.
+      // There is deliberately no separate "verify" endpoint call here.
+      const result = await signIn("credentials", {
+        email: otpEmail,
+        otp: code,
+        callbackUrl,
+        redirect: false,
+      });
+
+      if (!result || result.error) {
+        setError(result?.status === 401 ? "Invalid or expired code." : `Sign in failed${result?.error ? `: ${result.error}` : "."}`);
+        return;
+      }
+
+      if (!(await confirmAdminSession(otpEmail))) {
+        setError("Sign-in was accepted, but an ADMIN session could not be confirmed. Please try again or contact the owner.");
+        return;
+      }
+
+      window.localStorage.setItem("owner_session_active", "true");
+      window.location.assign(callbackUrl);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Network error connecting to NextAuth API.";
+      setError(`Sign in error: ${message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleGoogleLogin() {
     if (loading) return;
     setError("");
@@ -112,26 +211,76 @@ export default function LoginPage() {
 
         {error && <div role="alert" className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-xs">{error}</div>}
 
-        <form onSubmit={handleCredentialsLogin} className="space-y-4">
-          <div>
-            <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">Owner Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="owner@gmail.com" className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-brand-500 transition" required autoComplete="username" />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">Password</label>
-            <div className="relative">
-              <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 pr-10 text-sm text-white focus:outline-none focus:border-brand-500 transition" required autoComplete="current-password" />
-              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white text-xs focus:outline-none">{showPassword ? "Hide" : "Show"}</button>
+        {mode === "password" ? (
+          <form onSubmit={handleCredentialsLogin} className="space-y-4">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">Owner Email</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="owner@gmail.com" className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-brand-500 transition" required autoComplete="username" />
             </div>
-          </div>
 
-          <div className="text-[11px] font-mono text-slate-500">Enter your configured OWNER_EMAIL and password. • NextAuth Credentials / Google OAuth</div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">Password</label>
+              <div className="relative">
+                <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 pr-10 text-sm text-white focus:outline-none focus:border-brand-500 transition" required autoComplete="current-password" />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white text-xs focus:outline-none">{showPassword ? "Hide" : "Show"}</button>
+              </div>
+            </div>
 
-          <button type="submit" disabled={loading} className="w-full py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-sm font-black transition shadow-lg shadow-brand-600/20 disabled:opacity-50">
-            {loading ? "Authenticating..." : "🔒 Authenticate as Owner"}
-          </button>
-        </form>
+            <div className="text-[11px] font-mono text-slate-500">Enter your configured OWNER_EMAIL and password. • NextAuth Credentials / Google OAuth</div>
+
+            <button type="submit" disabled={loading} className="w-full py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-sm font-black transition shadow-lg shadow-brand-600/20 disabled:opacity-50">
+              {loading ? "Authenticating..." : "🔒 Authenticate as Owner"}
+            </button>
+
+            <button type="button" onClick={() => switchMode("otp")} disabled={loading} className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 transition disabled:opacity-50">
+              ✉️ Email me a 6-digit sign-in code
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={otpSent ? handleOtpLogin : handleOtpRequest} className="space-y-4">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">Owner Email</label>
+              <input type="email" value={otpEmail} onChange={(e) => setOtpEmail(e.target.value)} placeholder="owner@gmail.com" className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-brand-500 transition" required autoComplete="username" disabled={otpSent} />
+            </div>
+
+            {otpSent && (
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">6-Digit Code</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="000000"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-center tracking-[0.5em] font-mono text-lg text-white focus:outline-none focus:border-brand-500 transition"
+                  required
+                />
+                <p className="text-[11px] font-mono text-slate-500 mt-2">The code expires 5 minutes after it was sent and can be used only once.</p>
+              </div>
+            )}
+
+            {otpNotice && <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-300">{otpNotice}</div>}
+
+            <button type="submit" disabled={loading || otpSending} className="w-full py-3 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-sm font-black transition shadow-lg shadow-brand-600/20 disabled:opacity-50">
+              {otpSending ? "Sending code..." : loading ? "Verifying code..." : otpSent ? "🔓 Sign in with code" : "✉️ Send sign-in code"}
+            </button>
+
+            {otpSent && (
+              <button type="button" onClick={handleOtpRequest} disabled={loading || otpSending} className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 transition disabled:opacity-50">
+                Send a new code
+              </button>
+            )}
+
+            <button type="button" onClick={() => switchMode("password")} disabled={loading || otpSending} className="w-full py-2.5 bg-transparent hover:bg-slate-800 text-slate-400 rounded-xl text-xs font-bold transition disabled:opacity-50">
+              Use password instead
+            </button>
+
+            <div className="text-[11px] font-mono text-slate-500 text-center">Code verified once via the NextAuth Credentials provider. • ADMIN access only</div>
+          </form>
+        )}
 
         <div className="mt-3">
           <button type="button" onClick={handleGoogleLogin} disabled={loading} className="w-full py-3 bg-white hover:bg-slate-100 text-slate-900 rounded-xl text-sm font-bold flex items-center justify-center gap-2.5 transition shadow disabled:opacity-50">
