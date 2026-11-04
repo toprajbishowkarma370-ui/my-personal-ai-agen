@@ -4,6 +4,9 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
+import { verifyOtpLogin } from "./otp";
+import { prismaOtpStore } from "./otp-store";
+import { findMissingAuthEnv } from "./auth-env";
 
 export type Role = "ADMIN" | "AGENT" | "CLIENT";
 
@@ -21,9 +24,18 @@ function isProduction() {
   return process.env.NODE_ENV === "production";
 }
 
+/**
+ * NEXTAUTH_URL is intentionally part of the base list: it is the single source
+ * of truth for the Google OAuth callback (never derived from the Host header).
+ *
+ * OWNER_PASSWORD_HASH is NOT in the base list. Password login stays available
+ * when it is set, but OTP email login only needs NEXTAUTH_SECRET,
+ * OWNER_EMAIL and an OTP delivery channel (Gmail or SMTP).
+ */
+export const REQUIRED_AUTH_ENV = ["NEXTAUTH_SECRET", "NEXTAUTH_URL", "DATABASE_URL", "OWNER_EMAIL"] as const;
+
 function validateProductionEnv(): string[] {
-  const required = ["NEXTAUTH_SECRET", "NEXTAUTH_URL", "DATABASE_URL", "OWNER_EMAIL", "OWNER_PASSWORD_HASH"];
-  const missing = required.filter((v) => !process.env[v]);
+  const missing = findMissingAuthEnv(REQUIRED_AUTH_ENV);
   if (missing.length > 0 && isProduction()) {
     throw new Error(`[Auth Security Error] Missing required production environment variables: ${missing.join(", ")}`);
   }
@@ -46,17 +58,46 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        otp: { label: "One-time code", type: "text" },
       },
       async authorize(credentials) {
         validateProductionEnv();
 
-        if (!credentials?.email || !credentials?.password) {
+        if (!credentials?.email) {
           return null;
         }
 
         const email = credentials.email?.toLowerCase()?.trim();
         const ownerEmail = process.env.OWNER_EMAIL?.trim()?.toLowerCase();
         const ownerHash = process.env.OWNER_PASSWORD_HASH?.trim();
+
+        // OTP login. This is the ONLY place a one-time code is verified and
+        // consumed: /api/auth/otp/request only issues codes, it never verifies
+        // them, and the login page calls signIn("credentials") once. Verify and
+        // consume happen in a single call so a code can never be checked twice.
+        const otpCode = typeof credentials.otp === "string" ? credentials.otp.trim() : "";
+        if (otpCode.length > 0) {
+          const otpResult = await verifyOtpLogin({
+            email,
+            code: otpCode,
+            ownerEmail: process.env.OWNER_EMAIL,
+            secret: process.env.NEXTAUTH_SECRET,
+            store: prismaOtpStore,
+          });
+
+          if (!otpResult.ok) {
+            // Reason only: never log the submitted code or the session token.
+            const reason = "reason" in otpResult ? otpResult.reason : "invalid";
+            console.warn("[auth] OTP login rejected:", reason);
+            return null;
+          }
+
+          return otpResult.user as any;
+        }
+
+        if (!credentials.password) {
+          return null;
+        }
 
         if (ownerEmail && ownerHash && email === ownerEmail) {
           let ok = false;
