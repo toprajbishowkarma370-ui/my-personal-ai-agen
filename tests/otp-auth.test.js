@@ -235,11 +235,14 @@ test("OTP request endpoint never returns or logs the code", () => {
 
   // The plaintext code is referenced exactly once: handed to the mailer.
   assert.strictEqual((ROUTE_SOURCE.match(/result\.code/g) || []).length, 1, "code is passed only to the mailer");
-  assert.match(ROUTE_SOURCE, /sendOtpEmail\(\{ to: result\.email, code: result\.code, expiresAt: result\.expiresAt \}\)/);
+  assert.match(
+    ROUTE_SOURCE,
+    /sendOtpEmail\(\{ to: result\.email, code: result\.code, expiresAt: result\.expiresAt, config: mailConfig \}\)/,
+  );
   assert.match(ROUTE_SOURCE, /Cache-Control": "no-store"/);
   assert.match(ROUTE_SOURCE, /retryAfterSeconds/);
   assert.match(ROUTE_SOURCE, /429/);
-  assert.match(ROUTE_SOURCE, /isOtpDeliveryConfigured\(\)/);
+  assert.match(ROUTE_SOURCE, /resolveMailConfig\(\)/, "the route resolves mail config through the shared resolver");
   assert.match(ROUTE_SOURCE, /Cross-origin request rejected/);
 
   // No console output in the OTP path may include code material.
