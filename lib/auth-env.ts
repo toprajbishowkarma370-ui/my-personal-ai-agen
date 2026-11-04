@@ -8,19 +8,27 @@
  * channel must be configured, but both are not required.
  */
 
+import { cleanEnvValue, resolveMailConfig } from "./mail-config";
+
 export type AuthEnv = Record<string, string | undefined>;
 
+/**
+ * Delivery checks delegate to `lib/mail-config.ts`, which trims values, strips
+ * copy/paste quotes and accepts the documented aliases. Keeping one resolver
+ * means the login gate and the transport can never disagree about whether mail
+ * is configured.
+ */
 export function isGmailOtpConfigured(env: AuthEnv = process.env): boolean {
-  return Boolean(env.GMAIL_USER && env.GMAIL_APP_PASSWORD);
+  return resolveMailConfig(env).config?.provider === "gmail";
 }
 
 export function isSmtpOtpConfigured(env: AuthEnv = process.env): boolean {
-  return Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS);
+  return resolveMailConfig(env).config?.provider === "smtp";
 }
 
 /** True when OTP codes can actually be delivered to the owner. */
 export function isOtpDeliveryConfigured(env: AuthEnv = process.env): boolean {
-  return isGmailOtpConfigured(env) || isSmtpOtpConfigured(env);
+  return resolveMailConfig(env).config !== null;
 }
 
 /** True when the legacy owner password login is usable. */
@@ -39,9 +47,10 @@ export function isAnyOwnerLoginConfigured(env: AuthEnv = process.env): boolean {
  * valid without OWNER_PASSWORD_HASH.
  */
 export function findMissingAuthEnv(baseRequired: readonly string[], env: AuthEnv = process.env): string[] {
-  const missing = baseRequired.filter((name) => !env[name]);
+  // A blank or whitespace-only value is not usable configuration.
+  const missing = baseRequired.filter((name) => cleanEnvValue(env[name]).length === 0);
 
-  if (!env.OWNER_PASSWORD_HASH && !isOtpDeliveryConfigured(env)) {
+  if (cleanEnvValue(env.OWNER_PASSWORD_HASH).length === 0 && !isOtpDeliveryConfigured(env)) {
     missing.push("OWNER_PASSWORD_HASH or GMAIL_USER/GMAIL_APP_PASSWORD");
   }
 
