@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { normalizeTrustedProxyHops, resolveClientIp } from "@/lib/client-ip";
 import { requestOtpLogin } from "@/lib/otp";
 import { prismaOtpStore } from "@/lib/otp-store";
-import { isOtpDeliveryConfigured, sendOtpEmail } from "@/lib/otp-email";
+import { resolveMailConfig } from "@/lib/mail-config";
+import {
+  OtpDeliveryNotConfiguredError,
+  classifyDeliveryFailure,
+  logMailConfigDiagnostics,
+  sendOtpEmail,
+} from "@/lib/otp-email";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -50,6 +56,30 @@ function json(body: Record<string, unknown>, status = 200, headers?: Record<stri
 }
 
 /**
+ * Secret-free configuration diagnostics.
+ *
+ * Exists because a production deployment reported "email delivery is not
+ * configured" while the dashboard showed the variables were set: the previous
+ * 503 could not distinguish a missing variable, an empty one, a quoted value or
+ * a name variant. This reports variable NAMES, booleans and remediation hints
+ * only — never a value, address or password — and is what the running Render
+ * process actually sees.
+ */
+export async function GET() {
+  const { config, diagnostics } = resolveMailConfig();
+  return json({
+    success: diagnostics.configured,
+    configured: diagnostics.configured,
+    provider: diagnostics.provider,
+    missing: diagnostics.missing,
+    present: diagnostics.present,
+    usedVars: diagnostics.usedVars,
+    issues: diagnostics.issues,
+    secure: config ? config.secure : false,
+  });
+}
+
+/**
  * Issue an owner OTP. This endpoint NEVER verifies or consumes a code — that
  * happens exactly once inside the NextAuth Credentials provider.
  */
@@ -70,15 +100,26 @@ export async function POST(req: NextRequest) {
     return json({ success: false, error: "Enter a valid email address." }, 400);
   }
 
-  if (!isOtpDeliveryConfigured()) {
+  // One resolver decides both the gate and the transport, so they can never
+  // disagree about whether mail is configured.
+  const { config: mailConfig, diagnostics: mailDiagnostics } = resolveMailConfig();
+
+  if (!mailConfig) {
+    logMailConfigDiagnostics(null, mailDiagnostics);
+    const missing = mailDiagnostics.missing.length > 0 ? mailDiagnostics.missing.join(", ") : "mail credentials";
     return json(
       {
         success: false,
-        error: "Email delivery is not configured on the server. Set GMAIL_USER and GMAIL_APP_PASSWORD (or SMTP_HOST, SMTP_USER, SMTP_PASS).",
+        error: `Email delivery is not configured on the server. Missing: ${missing}. Set GMAIL_USER and GMAIL_APP_PASSWORD (or SMTP_HOST, SMTP_USER, SMTP_PASS).`,
+        missing: mailDiagnostics.missing,
       },
       503,
     );
   }
+
+  // Surface usable-but-suspicious configuration (wrong app-password shape,
+  // quoted values, invalid port) once per process. Names and hints only.
+  logMailConfigDiagnostics(mailConfig, mailDiagnostics);
 
   try {
     const result = await requestOtpLogin({
@@ -113,11 +154,29 @@ export async function POST(req: NextRequest) {
     // address so this endpoint cannot be used to discover OWNER_EMAIL.
     if (result.deliver) {
       try {
-        await sendOtpEmail({ to: result.email, code: result.code, expiresAt: result.expiresAt });
+        await sendOtpEmail({ to: result.email, code: result.code, expiresAt: result.expiresAt, config: mailConfig });
       } catch (error) {
-        const name = error instanceof Error ? error.name : "UnknownError";
-        console.error("[otp] delivery failed:", name);
-        return json({ success: false, error: "Could not send the sign-in code. Check the mail server configuration." }, 502);
+        if (error instanceof OtpDeliveryNotConfiguredError) {
+          logMailConfigDiagnostics(null);
+          return json({ success: false, error: "Email delivery is not configured on the server.", missing: error.missing }, 503);
+        }
+
+        const failure = classifyDeliveryFailure(error);
+        // Classification only: provider messages can quote addresses.
+        console.error(`[otp] delivery failed: kind=${failure.kind} smtp=${failure.transportCode ?? "none"} name=${failure.name}`);
+
+        const message =
+          failure.kind === "auth"
+            ? "The mail server rejected the stored credentials. Check the Gmail App Password (or SMTP_USER/SMTP_PASS) on the server."
+            : failure.kind === "recipient"
+              ? "The mail server rejected the recipient address. Check the configured sender/relay restrictions."
+              : failure.kind === "timeout"
+                ? "The mail server did not respond in time. Check outbound SMTP access (ports 465/587) and the host/port settings."
+                : failure.kind === "connection"
+                  ? "The mail server could not be reached from the server. Check SMTP_HOST/SMTP_PORT and outbound access."
+                  : "Could not send the sign-in code. Check the mail server configuration.";
+
+        return json({ success: false, error: message, reason: failure.kind, provider: mailConfig.provider }, 502);
       }
     }
 
