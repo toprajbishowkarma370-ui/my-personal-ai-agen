@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { normalizeTrustedProxyHops, resolveClientIp } from "@/lib/client-ip";
 import { requestOtpLogin } from "@/lib/otp";
 import { prismaOtpStore } from "@/lib/otp-store";
-import { resolveOtpEmailConfig } from "@/lib/mail-config";
+import { resolveOtpEmailConfig as resolveMailConfig } from "@/lib/otp-email-config";
 import {
   OtpDeliveryNotConfiguredError,
   classifyDeliveryFailure,
@@ -12,7 +12,6 @@ import {
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
 const GENERIC_MESSAGE = "If this address is authorized, a 6-digit sign-in code has been sent.";
 
 function clientIp(req: NextRequest): string {
@@ -40,9 +39,9 @@ function json(body: Record<string, unknown>, status = 200, headers?: Record<stri
   return NextResponse.json(body, { status, headers: { "Cache-Control": "no-store", ...headers } });
 }
 
-/** Secret-free provider diagnostics; values and credentials are never returned. */
+/** Safe configuration diagnostics: only names, flags and provider are returned. */
 export async function GET() {
-  const { config, diagnostics } = resolveOtpEmailConfig();
+  const { config, diagnostics } = resolveMailConfig();
   return json({
     success: diagnostics.configured,
     configured: diagnostics.configured,
@@ -68,15 +67,11 @@ export async function POST(req: NextRequest) {
   }
   if (typeof email !== "string" || email.trim().length === 0) return json({ success: false, error: "Enter a valid email address." }, 400);
 
-  const { config: mailConfig, diagnostics: mailDiagnostics } = resolveOtpEmailConfig();
+  const { config: mailConfig, diagnostics: mailDiagnostics } = resolveMailConfig();
   if (!mailConfig) {
     logMailConfigDiagnostics(null, mailDiagnostics);
     const missing = mailDiagnostics.missing.length ? mailDiagnostics.missing.join(", ") : "mail credentials";
-    return json({
-      success: false,
-      error: `Email delivery is not configured on the server. Missing: ${missing}.`,
-      missing: mailDiagnostics.missing,
-    }, 503);
+    return json({ success: false, error: `Email delivery is not configured on the server. Missing: ${missing}.`, missing: mailDiagnostics.missing }, 503);
   }
   logMailConfigDiagnostics(mailConfig, mailDiagnostics);
 
@@ -104,9 +99,8 @@ export async function POST(req: NextRequest) {
         }
         const failure = classifyDeliveryFailure(error);
         console.error(`[otp] delivery failed: kind=${failure.kind} code=${failure.transportCode ?? "none"} name=${failure.name}`);
-        const isApi = mailConfig.provider === "resend";
         const message = failure.kind === "auth"
-          ? (isApi ? "The email API rejected its credentials. Check RESEND_API_KEY." : "The mail server rejected the stored credentials. Check the Gmail App Password or SMTP credentials.")
+          ? (mailConfig.provider === "resend" ? "The email API rejected its credentials. Check RESEND_API_KEY." : "The mail server rejected the stored credentials. Check the Gmail App Password or SMTP credentials.")
           : failure.kind === "recipient"
             ? "The email provider rejected the recipient or sender address. Check the sender domain and recipient restrictions."
             : failure.kind === "timeout"
