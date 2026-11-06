@@ -90,8 +90,8 @@ export default function LoginPage() {
         return;
       }
 
-      // This flag only dismisses the legacy HTML auth wall; authorization is
-      // enforced by NextAuth middleware and server-side session checks.
+      // This flag only dismisses the legacy static dashboard's auth wall;
+      // authorization is enforced by NextAuth middleware and server-side checks.
       window.localStorage.setItem("owner_session_active", "true");
       window.location.assign(callbackUrl);
     } catch (err: unknown) {
@@ -194,6 +194,7 @@ export default function LoginPage() {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unable to initiate Google OAuth.";
       setError(`Google sign-in error: ${message}`);
+    } finally {
       setLoading(false);
     }
   }

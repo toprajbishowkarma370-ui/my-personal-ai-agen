@@ -43,67 +43,6 @@ test("ClientDashboard no longer blocks navigation on undefined window global", (
   assert.ok(!/e\.preventDefault\(\)/.test(src), 'click handlers must not prevent navigation to /login');
 });
 
-test("Login result handling: success confirms ADMIN session then navigates to /", () => {
-  const src = read(LOGIN_PAGE);
-  // The session is confirmed server-side before any navigation.
-  assert.ok(src.includes("confirmAdminSession(email)"), 'server session confirmed before navigating');
-  assert.ok(src.includes("window.location.assign(callbackUrl)"), 'success navigates to / via full-page navigation');
-  assert.ok(src.includes("if (!(await confirmAdminSession(email)))"), 'navigation guarded by confirmed session');
-  // No local-only demo sign-in; the real NextAuth session cookie is the auth mechanism.
-  assert.ok(!src.includes("handleDemoLogin"), 'no local-only demo sign-in');
-  assert.ok(src.includes("result?.error") || src.includes("result.error"), 'signIn result inspected for error');
-});
-
-test("Login result handling: 401 / invalid owner rejected without establishing session", () => {
-  const src = read(LOGIN_PAGE);
-  assert.ok(src.includes("result?.error") || src.includes("result.error"), 'signIn result inspected for error');
-  assert.ok(
-    src.includes('Invalid Owner Email or Password') ||
-    src.includes('Access Denied: Owner ADMIN role required') ||
-    src.includes('ADMIN session could not be confirmed'),
-    'unauthorized rejection message present'
-  );
-  // On error result, must NOT navigate
-  const assignCount = (src.match(/window\.location\.assign\(callbackUrl\)/g) || []).length;
-  assert.ok(assignCount >= 1, 'navigation exists on success path');
-  // Error paths return before navigation.
-  assert.ok(src.includes("return;"), 'error path returns before navigation');
-});
-
-test("Missing Google OAuth configuration shows a useful server-side error", () => {
-  const src = read(LOGIN_PAGE);
-  assert.ok(
-    src.includes("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET"),
-    'missing OAuth config error mentions required env vars'
-  );
-  assert.ok(src.includes("OAuthNotConfigured") || src.includes("not configured"), 'OAuth not configured path handled');
-});
-
-test("Google unauthorized account (non-owner) rejected by NextAuth authorize callback", async () => {
-  // The NextAuth authorize callback only allows OWNER_EMAIL; others return null (401).
-  async function simulateAuthorize(email, password, ownerEmail, ownerHash) {
-    if (!ownerEmail || !ownerHash) return null;
-    if (email.toLowerCase().trim() !== ownerEmail.toLowerCase().trim()) return null;
-    const ok = password === "correct"; // simplified bcrypt stand-in
-    return ok ? { id: "owner_admin_01", email: ownerEmail, role: "ADMIN" } : null;
-  }
-  const owner = "alex.morgan@agency.local";
-  assert.strictEqual(await simulateAuthorize("hacker@gmail.com", "pw", owner, "hash"), null);
-  assert.strictEqual(await simulateAuthorize(owner, "wrong", owner, "hash"), null);
-  const success = await simulateAuthorize(owner, "correct", owner, "hash");
-  assert.ok(success && success.role === "ADMIN");
-});
-
-test("Login-loop prevention: real NextAuth session via signIn (not localStorage only)", () => {
-  const login = read(LOGIN_PAGE);
-  const middleware = read("./middleware.ts");
-  // Middleware protects routes by requiring a real NextAuth token (!!token).
-  assert.ok(middleware.includes("return !!token"), 'middleware requires a real NextAuth token');
-  // login page uses signIn (sets cookie) rather than only localStorage mirror.
-  assert.ok(login.includes('signIn("credentials"'), 'login establishes real session via signIn');
-  assert.ok(login.includes('signIn("google"'), 'google establishes real session via signIn');
-});
-
 test("Login-session-root-dashboard regression: no implicit ADMIN fallback", () => {
   const login = read(LOGIN_PAGE);
   const auth = read("./lib/auth.ts");

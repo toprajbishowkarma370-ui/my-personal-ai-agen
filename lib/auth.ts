@@ -61,7 +61,14 @@ export const authOptions: NextAuthOptions = {
         otp: { label: "One-time code", type: "text" },
       },
       async authorize(credentials) {
-        validateProductionEnv();
+        // Fail safely in production: never authenticate when required secrets
+        // are absent. Return null (fail safely) instead of throwing so NextAuth
+        // returns a clean authentication error instead of an unhandled
+        // exception.
+        const missing = validateProductionEnv();
+        if (missing.length > 0) {
+          return null;
+        }
 
         if (!credentials?.email) {
           return null;
@@ -160,30 +167,30 @@ export const authOptions: NextAuthOptions = {
   ],
   cookies: {
     sessionToken: {
-      name: process.env.NODE_ENV === "production" ? "__Secure-next-auth.session-token" : "next-auth.session-token",
+      name: isProduction() ? "__Secure-next-auth.session-token" : "next-auth.session-token",
       options: {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: isProduction(),
       },
     },
     callbackUrl: {
-      name: process.env.NODE_ENV === "production" ? "__Secure-next-auth.callback-url" : "next-auth.callback-url",
+      name: isProduction() ? "__Secure-next-auth.callback-url" : "next-auth.callback-url",
       options: {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: isProduction(),
       },
     },
     csrfToken: {
-      name: process.env.NODE_ENV === "production" ? "__Host-next-auth.csrf-token" : "next-auth.csrf-token",
+      name: isProduction() ? "__Host-next-auth.csrf-token" : "next-auth.csrf-token",
       options: {
         httpOnly: true,
         sameSite: "lax",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: isProduction(),
       },
     },
   },

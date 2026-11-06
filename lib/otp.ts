@@ -1,25 +1,123 @@
-import crypto from "node:crypto";
+import bcrypt from "bcryptjs";
+import * as crypto from "node:crypto";
 
-/**
- * Owner OTP (one-time passcode) login domain logic.
- *
- * This module is intentionally dependency-free (node:crypto only) so the exact
- * production rules can be exercised by the Node test runner. Persistence is
- * injected through `OtpStore`; `lib/otp-store.ts` provides the Prisma-backed
- * implementation used by the NextAuth Credentials provider.
- *
- * Security rules enforced here:
- * - 6-digit codes generated with a CSPRNG (uniform, leading zeros preserved)
- * - only a keyed HMAC-SHA256 digest of the code is persisted (never plaintext)
- * - 5 minute expiry
- * - exactly one successful verification per code (atomic consumption)
- * - replay of an already-consumed code is rejected
- * - per-email / per-IP request rate limiting and a bounded guess budget
- * - ADMIN-only: only OWNER_EMAIL can ever obtain a session
- */
+// ============================================================================
+// Shared constants (both branches agreed on these values)
+// ============================================================================
 
 export const OTP_LENGTH = 6;
-export const OTP_TTL_MS = 5 * 60 * 1000;
+export const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
+export const RESET_TOKEN_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+// ============================================================================
+// kilo/bronze-haze-kuy (PR #30) simple OTP API
+// bcrypt-based hash, in-memory rate-limit map, Math.random code generation
+// Used by: forgot-password/route.ts, verify-otp/route.ts
+// ============================================================================
+
+export const OTP_MAX_REQUESTS_PER_WINDOW = 5;
+export const OTP_REQUEST_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+export const OTP_MAX_FAILED_ATTEMPTS = 5;
+export const OTP_FAILED_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+interface RateLimitEntry {
+  count: number;
+  firstSeen: number;
+  failed: number;
+  failedFirstSeen: number;
+}
+
+const rateLimitMap = new Map<string, RateLimitEntry>();
+
+function now() {
+  return Date.now();
+}
+
+function prune(entry: RateLimitEntry, ttl: number) {
+  if (now() - entry.firstSeen > ttl) {
+    entry.count = 0;
+    entry.firstSeen = now();
+  }
+  if (now() - entry.failedFirstSeen > ttl) {
+    entry.failed = 0;
+    entry.failedFirstSeen = now();
+  }
+}
+
+export function checkRateLimit(identifier: string): { allowed: boolean; reason?: string } {
+  const entry = rateLimitMap.get(identifier) || { count: 0, firstSeen: now(), failed: 0, failedFirstSeen: now() };
+  prune(entry, OTP_REQUEST_WINDOW_MS);
+  if (entry.count >= OTP_MAX_REQUESTS_PER_WINDOW) {
+    return { allowed: false, reason: "Too many OTP requests. Try again later." };
+  }
+  rateLimitMap.set(identifier, entry);
+  return { allowed: true };
+}
+
+export function incrementRequestCount(identifier: string) {
+  const entry = rateLimitMap.get(identifier) || { count: 0, firstSeen: now(), failed: 0, failedFirstSeen: now() };
+  entry.count += 1;
+  if (entry.count === 1) entry.firstSeen = now();
+  rateLimitMap.set(identifier, entry);
+}
+
+export function checkFailedAttemptLimit(identifier: string): { allowed: boolean; reason?: string } {
+  const entry = rateLimitMap.get(identifier) || { count: 0, firstSeen: now(), failed: 0, failedFirstSeen: now() };
+  prune(entry, OTP_FAILED_WINDOW_MS);
+  if (entry.failed >= OTP_MAX_FAILED_ATTEMPTS) {
+    return { allowed: false, reason: "Too many failed attempts. Try again later." };
+  }
+  rateLimitMap.set(identifier, entry);
+  return { allowed: true };
+}
+
+export function incrementFailedAttempt(identifier: string) {
+  const entry = rateLimitMap.get(identifier) || { count: 0, firstSeen: now(), failed: 0, failedFirstSeen: now() };
+  entry.failed += 1;
+  if (entry.failed === 1) entry.failedFirstSeen = now();
+  rateLimitMap.set(identifier, entry);
+}
+
+export function clearFailedAttempts(identifier: string) {
+  const entry = rateLimitMap.get(identifier);
+  if (entry) {
+    entry.failed = 0;
+    entry.failedFirstSeen = now();
+    rateLimitMap.set(identifier, entry);
+  }
+}
+
+/** Generate a 6-digit numeric OTP. */
+export function generateOTP(): string {
+  let otp = "";
+  for (let i = 0; i < OTP_LENGTH; i += 1) {
+    otp += String(Math.floor(Math.random() * 10));
+  }
+  return otp;
+}
+
+/** Hash an OTP for storage. */
+export async function hashOTP(otp: string): Promise<string> {
+  return bcrypt.hash(otp, 10);
+}
+
+/** Verify an OTP against its stored hash. */
+export async function verifyOTP(otp: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(otp, hash);
+}
+
+/** Generate a cryptographically secure reset token. */
+export function generateResetToken(): string {
+  const bytes = crypto.randomBytes(32);
+  return bytes.toString("hex");
+}
+
+// ============================================================================
+// main advanced OTP API
+// crypto keyed-HMAC, OtpStore interface, atomic issuance/verification
+// Used by: lib/auth.ts, otp/request/route.ts, lib/otp-store.ts
+// ============================================================================
+
 export const OTP_MAX_ATTEMPTS = 5;
 export const OTP_RATE_WINDOW_MS = 10 * 60 * 1000;
 export const OTP_MAX_REQUESTS_PER_EMAIL = 3;
@@ -48,9 +146,6 @@ export type OtpRateSnapshot = {
   oldestIpCreatedAt: Date | null;
 };
 
-/**
- * Statement-level persistence used inside an issuance lock.
- */
 export interface OtpTransaction {
   countRequestsSince(input: { email: string; ip: string | null; since: Date }): Promise<OtpRateSnapshot>;
   invalidateActive(email: string, now: Date): Promise<number>;
@@ -63,18 +158,6 @@ export interface OtpTransaction {
   }): Promise<OtpRecord>;
 }
 
-/**
- * Persistence contract for the OTP flow.
- *
- * Implementations MUST provide two guarantees:
- *
- * 1. `withLock` serializes all work for the same email (and the same IP) so the
- *    rate-limit check, invalidation and insert happen as one atomic unit. Two
- *    concurrent requests can therefore never both pass the limit check or both
- *    leave an active code behind.
- * 2. `consumeIfActive` is a single conditional UPDATE so a code can be consumed
- *    exactly once even when two verifications race.
- */
 export interface OtpStore extends OtpTransaction {
   withLock<T>(keys: { email: string; ip: string | null }, fn: (tx: OtpTransaction) => Promise<T>): Promise<T>;
   findActive(email: string, now: Date): Promise<OtpRecord[]>;
@@ -88,9 +171,7 @@ export type OtpRequestResult =
   | {
       status: "sent";
       email: string;
-      /** True only when the address is OWNER_EMAIL and delivery is configured. */
       deliver: boolean;
-      /** Plaintext code, handed to the mailer only. Never serialized to HTTP. */
       code: string;
       expiresAt: Date;
     }
@@ -121,10 +202,7 @@ function isOwnerEmail(email: string, ownerEmail: string | null | undefined): boo
   return Boolean(owner) && email === owner;
 }
 
-/**
- * Generate a 6-digit numeric code with a cryptographically secure RNG.
- * `randomInt` is injectable for deterministic tests only.
- */
+/** Generate a 6-digit numeric code with a cryptographically secure RNG. */
 export function generateOtpCode(randomInt: (min: number, max: number) => number = crypto.randomInt): string {
   const value = randomInt(0, 10 ** OTP_LENGTH);
   if (!Number.isInteger(value) || value < 0 || value >= 10 ** OTP_LENGTH) {
@@ -140,10 +218,6 @@ function otpKey(secret: string | null | undefined): Buffer {
   return Buffer.from(secret, "utf8");
 }
 
-/**
- * Keyed digest of a code. A database leak alone cannot reveal pending codes
- * without NEXTAUTH_SECRET, and the digest is not reversible.
- */
 export function hashOtpCode(code: string, secret: string | null | undefined): string {
   return crypto.createHmac("sha256", otpKey(secret)).update(`owner-otp:${String(code).trim()}`).digest("hex");
 }
@@ -175,14 +249,6 @@ function retryAfterSeconds(oldest: Date | null, now: Date): number {
   return Math.max(1, Math.ceil(remaining / 1000));
 }
 
-/**
- * Issue a new OTP. A new request invalidates any earlier active code so only
- * one code can ever be valid for an address.
- *
- * The result is identical for owner and non-owner addresses (aside from the
- * internal `deliver` flag) so the endpoint cannot be used to enumerate the
- * owner account.
- */
 export async function requestOtpLogin(input: {
   email: unknown;
   ip?: string | null;
@@ -203,9 +269,6 @@ export async function requestOtpLogin(input: {
     return { status: "unavailable" };
   }
 
-  // The whole check-then-write sequence runs under the store lock, so it is
-  // atomic: concurrent requests for the same email (or from the same IP) are
-  // serialized and can neither bypass the limits nor leave two valid codes.
   return await input.store.withLock({ email, ip }, async (tx) => {
     const since = new Date(now.getTime() - OTP_RATE_WINDOW_MS);
     const rate = await tx.countRequestsSince({ email, ip, since });
@@ -221,8 +284,6 @@ export async function requestOtpLogin(input: {
     const code = generateOtpCode();
     const expiresAt = new Date(now.getTime() + OTP_TTL_MS);
 
-    // Invalidating superseded codes inside the same transaction means no reader
-    // can ever observe two valid codes for one address.
     await tx.invalidateActive(email, now);
     await tx.create({
       email,
@@ -242,10 +303,6 @@ export async function requestOtpLogin(input: {
   });
 }
 
-/**
- * Verify and consume an OTP exactly once. Callers must treat every failure
- * reason as the same generic "invalid or expired code" for the end user.
- */
 export async function verifyOtpLogin(input: {
   email: unknown;
   code: unknown;
@@ -265,7 +322,6 @@ export async function verifyOtpLogin(input: {
     return { ok: false, reason: "invalid" };
   }
 
-  // ADMIN-only: never read or consume state for a non-owner address.
   if (!isOwnerEmail(email, input.ownerEmail)) {
     return { ok: false, reason: "invalid" };
   }
@@ -286,7 +342,6 @@ export async function verifyOtpLogin(input: {
       if (!lockedCandidate) lockedCandidate = record;
       continue;
     }
-    // Compare every candidate without short-circuiting on the first mismatch.
     const isMatch = verifyOtpHash(code, record.codeHash, input.secret);
     if (isMatch && !matched) {
       matched = record;
@@ -307,7 +362,6 @@ export async function verifyOtpLogin(input: {
       return { ok: false, reason: "locked" };
     }
 
-    // Replay detection: the exact code was already used successfully.
     const consumed = await input.store.findConsumedByHash(email, codeHash);
     if (consumed) {
       return { ok: false, reason: "reused" };
@@ -321,14 +375,11 @@ export async function verifyOtpLogin(input: {
     return { ok: false, reason: "invalid" };
   }
 
-  // Atomic single-use consumption. If another request consumed it first this
-  // returns false and the replay is rejected.
   const consumedNow = await input.store.consumeIfActive(matched.id, now);
   if (!consumedNow) {
     return { ok: false, reason: "reused" };
   }
 
-  // Defence in depth: no other code for this address may remain valid.
   await input.store.invalidateActive(email, now);
 
   return {
