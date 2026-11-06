@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/auth";
-import { executeGeminiPrompt } from "@/lib/gemini";
+import { executeAiPrompt, aiRequiresConfiguration, getConfiguredProviderLabel } from "@/lib/ai-provider";
 import { logAction } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -38,7 +38,15 @@ Return valid JSON with the following exact keys:
   ]
 }`;
 
-    const raw = await executeGeminiPrompt(`Generate YouTube package for: ${topic}`, systemPrompt);
+    if (aiRequiresConfiguration()) {
+      return NextResponse.json({ 
+        success: false, 
+        error: "No AI provider is configured on the server. Set OPENAI_API_KEY (recommended) or GEMINI_API_KEY in Render Environment variables to enable live YouTube content generation.",
+        needsApiKey: true
+      }, { status: 400 });
+    }
+
+    const raw = await executeAiPrompt(`Generate YouTube package for: ${topic}`, systemPrompt);
     let parsed;
     try {
       const cleaned = raw.replace(/```json/g, "").replace(/```/g, "").trim();
@@ -53,7 +61,7 @@ Return valid JSON with the following exact keys:
       };
     }
 
-    await logAction("youtube.generate", JSON.stringify({ topic, language }));
+    await logAction("youtube.generate", JSON.stringify({ topic, language, provider: getConfiguredProviderLabel() }));
     return NextResponse.json({ success: true, data: parsed });
   } catch (err: any) {
     console.error("POST /api/youtube/generate error", err);

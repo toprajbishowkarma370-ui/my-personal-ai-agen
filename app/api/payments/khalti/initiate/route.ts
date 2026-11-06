@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
+import { requireAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAction } from "@/lib/audit";
 
@@ -7,6 +8,7 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    await requireAdminSession();
     const { invoiceId } = await req.json();
     if (!invoiceId) {
       return NextResponse.json({ success: false, error: "Invoice ID required" }, { status: 400 });

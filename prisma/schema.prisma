@@ -64,6 +64,23 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+// Owner email OTP login codes. Only a keyed HMAC digest is stored, never the
+// plaintext code. A row is single-use: consumedAt is set atomically.
+model LoginOtp {
+  id         String    @id @default(cuid())
+  email      String
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int       @default(0)
+  requestIp  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([email, createdAt])
+  @@index([email, codeHash])
+  @@index([requestIp, createdAt])
+}
+
 model Customer {
   id        String   @id @default(cuid())
   name      String
