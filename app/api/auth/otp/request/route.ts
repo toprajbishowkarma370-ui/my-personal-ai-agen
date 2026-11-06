@@ -2,13 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { normalizeTrustedProxyHops, resolveClientIp } from "@/lib/client-ip";
 import { requestOtpLogin } from "@/lib/otp";
 import { prismaOtpStore } from "@/lib/otp-store";
-import { resolveMailConfig } from "@/lib/mail-config";
-import {
-  OtpDeliveryNotConfiguredError,
-  classifyDeliveryFailure,
-  logMailConfigDiagnostics,
-  sendOtpEmail,
-} from "@/lib/otp-email";
+import { isResendConfigured } from "@/lib/auth-env";
+import { OtpDeliveryNotConfiguredError, sendOtpEmail } from "@/lib/otp-email";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -66,16 +61,19 @@ function json(body: Record<string, unknown>, status = 200, headers?: Record<stri
  * process actually sees.
  */
 export async function GET() {
-  const { config, diagnostics } = resolveMailConfig();
+  const configured = isResendConfigured();
+  const missing: string[] = [];
+  if (!process.env.RESEND_API_KEY) missing.push("RESEND_API_KEY");
+  if (!process.env.EMAIL_FROM) missing.push("EMAIL_FROM");
   return json({
-    success: diagnostics.configured,
-    configured: diagnostics.configured,
-    provider: diagnostics.provider,
-    missing: diagnostics.missing,
-    present: diagnostics.present,
-    usedVars: diagnostics.usedVars,
-    issues: diagnostics.issues,
-    secure: config ? config.secure : false,
+    success: configured,
+    configured,
+    provider: configured ? "resend" : null,
+    missing,
+    present: configured ? ["RESEND_API_KEY", "EMAIL_FROM"] : [],
+    usedVars: configured ? ["RESEND_API_KEY", "EMAIL_FROM"] : [],
+    issues: configured ? [] : ["Set RESEND_API_KEY and EMAIL_FROM in Render environment variables."],
+    secure: true,
   });
 }
 
@@ -100,26 +98,22 @@ export async function POST(req: NextRequest) {
     return json({ success: false, error: "Enter a valid email address." }, 400);
   }
 
-  // One resolver decides both the gate and the transport, so they can never
-  // disagree about whether mail is configured.
-  const { config: mailConfig, diagnostics: mailDiagnostics } = resolveMailConfig();
-
-  if (!mailConfig) {
-    logMailConfigDiagnostics(null, mailDiagnostics);
-    const missing = mailDiagnostics.missing.length > 0 ? mailDiagnostics.missing.join(", ") : "mail credentials";
+  // Gate: Resend must be configured before issuing a code. Render free web
+  // services block outbound SMTP, so Resend HTTPS (port 443) is the only
+  // delivery channel.
+  if (!isResendConfigured()) {
+    const missing: string[] = [];
+    if (!process.env.RESEND_API_KEY) missing.push("RESEND_API_KEY");
+    if (!process.env.EMAIL_FROM) missing.push("EMAIL_FROM");
     return json(
       {
         success: false,
-        error: `Email delivery is not configured on the server. Missing: ${missing}. Set GMAIL_USER and GMAIL_APP_PASSWORD (or SMTP_HOST, SMTP_USER, SMTP_PASS).`,
-        missing: mailDiagnostics.missing,
+        error: `Email delivery is not configured on the server. Missing: ${missing.join(", ")}. Set RESEND_API_KEY and EMAIL_FROM in Render environment variables.`,
+        missing,
       },
       503,
     );
   }
-
-  // Surface usable-but-suspicious configuration (wrong app-password shape,
-  // quoted values, invalid port) once per process. Names and hints only.
-  logMailConfigDiagnostics(mailConfig, mailDiagnostics);
 
   try {
     const result = await requestOtpLogin({
@@ -154,29 +148,16 @@ export async function POST(req: NextRequest) {
     // address so this endpoint cannot be used to discover OWNER_EMAIL.
     if (result.deliver) {
       try {
-        await sendOtpEmail({ to: result.email, code: result.code, expiresAt: result.expiresAt, config: mailConfig });
+        await sendOtpEmail({ to: result.email, code: result.code, expiresAt: result.expiresAt });
       } catch (error) {
         if (error instanceof OtpDeliveryNotConfiguredError) {
-          logMailConfigDiagnostics(null);
           return json({ success: false, error: "Email delivery is not configured on the server.", missing: error.missing }, 503);
         }
-
-        const failure = classifyDeliveryFailure(error);
-        // Classification only: provider messages can quote addresses.
-        console.error(`[otp] delivery failed: kind=${failure.kind} smtp=${failure.transportCode ?? "none"} name=${failure.name}`);
-
-        const message =
-          failure.kind === "auth"
-            ? "The mail server rejected the stored credentials. Check the Gmail App Password (or SMTP_USER/SMTP_PASS) on the server."
-            : failure.kind === "recipient"
-              ? "The mail server rejected the recipient address. Check the configured sender/relay restrictions."
-              : failure.kind === "timeout"
-                ? "The mail server did not respond in time. Check outbound SMTP access (ports 465/587) and the host/port settings."
-                : failure.kind === "connection"
-                  ? "The mail server could not be reached from the server. Check SMTP_HOST/SMTP_PORT and outbound access."
-                  : "Could not send the sign-in code. Check the mail server configuration.";
-
-        return json({ success: false, error: message, reason: failure.kind, provider: mailConfig.provider }, 502);
+        console.error("[otp] delivery failed:", error instanceof Error ? error.message : String(error));
+        return json(
+          { success: false, error: "Could not send the sign-in code. Check the Resend email configuration." },
+          502,
+        );
       }
     }
 

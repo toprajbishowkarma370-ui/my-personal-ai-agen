@@ -40,11 +40,9 @@ export async function POST(req: Request) {
       },
     });
 
-    // Send the OTP via Gmail SMTP. If SMTP is not configured, the request still
-    // "succeeds" from the client's perspective so we never leak whether mail is set up.
-    await sendOTPEmail(email, otp).catch(() => {
-      // Intentionally ignored: do not fail the flow or reveal transport state.
-    });
+    // Send the OTP via Resend HTTPS. Delivery failures are surfaced: we never
+    // report success when the code was not actually sent.
+    await sendOTPEmail(email, otp);
 
     return genericOk;
   } catch {

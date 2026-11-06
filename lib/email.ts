@@ -1,36 +1,4 @@
-import nodemailer from "nodemailer";
-
-let transporter: nodemailer.Transporter | null = null;
-
-function getTransporter(): nodemailer.Transporter | null {
-  const host = process.env.SMTP_HOST;
-  const port = process.env.SMTP_PORT;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-
-  if (!host || !port || !user || !pass) {
-    return null;
-  }
-
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host,
-      port: Number(port),
-      secure: port === "465",
-      auth: { user, pass },
-    });
-  }
-  return transporter;
-}
-
-function getResendConfig() {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM;
-  if (!apiKey || !from) {
-    return null;
-  }
-  return { apiKey, from };
-}
+const RESEND_API_URL = "https://api.resend.com/emails";
 
 function emailHtml(otp: string): string {
   return `
@@ -42,52 +10,63 @@ function emailHtml(otp: string): string {
   `;
 }
 
-/** Send an OTP email. Returns true if mail was queued for delivery. */
+/** Required Render environment variables for Resend email delivery. */
+export const REQUIRED_RESEND_ENV = ["RESEND_API_KEY", "EMAIL_FROM"] as const;
+
+export function requireResendConfig(): { apiKey: string; from: string } {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  if (!apiKey || !from) {
+    throw new Error(
+      "Resend email delivery is not configured. Set RESEND_API_KEY and EMAIL_FROM in Render environment variables.",
+    );
+  }
+  return { apiKey, from };
+}
+
+/**
+ * Send an OTP email via the Resend HTTPS API (port 443).
+ *
+ * Resolves only when Resend accepts the message. Rejects on any delivery or
+ * configuration failure — it never reports success when delivery did not happen.
+ * SMTP is never attempted: Render free web services block outbound SMTP ports
+ * 25, 465 and 587.
+ */
 export async function sendOTPEmail(to: string, otp: string): Promise<boolean> {
-  // Try Resend HTTPS API first
-  const resendConfig = getResendConfig();
-  if (resendConfig) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${resendConfig.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: resendConfig.from,
-          to,
-          subject: "Your One-Time Password (OTP) - My Personal AI Business Agent",
-          html: emailHtml(otp),
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      if (res.ok) {
-        return true;
+  const { apiKey, from } = requireResendConfig();
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+  try {
+    const res = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to,
+        subject: "Your One-Time Password (OTP) - My Personal AI Business Agent",
+        html: emailHtml(otp),
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      let detail = "";
+      try {
+        const body = await res.json();
+        detail = body.message || JSON.stringify(body);
+      } catch {
+        detail = res.statusText;
       }
-      // Fall through to SMTP on failure
-    } catch {
-      // Fall through to SMTP on network error (including AbortError from timeout)
+      throw new Error(`Resend API rejected the message (${res.status}): ${detail}`);
     }
+
+    return true;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  // Fallback to SMTP
-  const transporter = getTransporter();
-  if (!transporter) {
-    return false;
-  }
-
-  const from = process.env.SMTP_USER;
-  await transporter.sendMail({
-    from,
-    to,
-    subject: "Your One-Time Password (OTP) - My Personal AI Business Agent",
-    text: `Your OTP code is ${otp}. It expires in 5 minutes and can be used once.`,
-    html: emailHtml(otp),
-  });
-
-  return true;
 }
